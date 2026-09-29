@@ -1,0 +1,11 @@
+# Python bytecode and local environments
+__pycache__/
+*.py[cod]
+.venv/
+
+# macOS Finder metadata
+.DS_Store
+
+# Hardware- and session-specific outputs
+anchor_calibration.json
+recordings/

@@ -1,77 +1,138 @@
-# Raspberry Pi rover controller
+# Leader-1 Raspberry Pi controller
 
-`rover_control.py` drives the existing Nano firmware over USB serial. The Nano
-remains responsible for motor PI control, encoder handling, odometry, MPU6050
-fusion, timeouts, and emergency motor stop.
+`leader_formation.py` is the Raspberry Pi owner of the Leader-1 Nano USB
+connection. It implements the L1 `IO,<sequence>,<OPERATION>` protocol at
+115200 baud. The Nano remains responsible for motor control, encoder odometry,
+IMU integration and its own motor timeout.
 
-The program is intentionally an interactive command-line controller, not a
-systemd service: booting the Pi must never start the motors.
+`rover_control.py` is retained only as a compatibility entry point and runs the
+same L1 controller. Do **not** use scripts written for the earlier single-letter
+`S/I/D/P/G1` protocol with this firmware.
 
-## Install on the Pi
+## Connect the Leader
 
-From the Mac project folder:
+1. Connect the Pi's USB host port to the Leader Nano's USB port. Do not use
+   Nano D0/D1 directly.
+2. On the Pi, identify the stable device link:
+
+   ```bash
+   ls -l /dev/serial/by-id/
+   ```
+
+   Use the resulting full path with `--port`. If the USB converter has no
+   unique serial number and `by-id` is absent, use the particular physical USB
+   socket's path from `ls -l /dev/serial/by-path/`; never use `/dev/ttyUSB0`.
+3. Install the one runtime dependency and run the non-moving handshake:
+
+   ```bash
+   cd ~/pi_rover
+   python3 -m pip install --user pyserial
+   python3 leader_formation.py \
+     --port /dev/serial/by-id/<Nano裝置名稱> status
+   ```
+
+Opening the USB serial port can reset the Nano. The client waits two seconds,
+then always performs `HELLO → STOP → IMU → ENCODER → STATUS`. It allows only
+one process to own the port.
+
+`status` must report all of the following before a path can run:
+
+- `imu_present=1`
+- `imu_calibrated=1`
+- `encoder_preflight=1`
+- `fault_code=0`
+
+If calibration is required, keep the rover motionless and run:
 
 ```bash
-scp -r pi_rover alan@192.168.1.199:~/
+python3 leader_formation.py --port /dev/serial/by-id/<Nano裝置名稱> \
+  calibrate --confirm-still
 ```
 
-Then, on the Pi:
+This opens the port, stops first, then additionally requires typing
+`CALIBRATE` before sending the command.
+
+## Safe operations
 
 ```bash
-cd ~/pi_rover
-python3 rover_control.py inspect
+# These never command motion.
+python3 leader_formation.py --port <PORT> config
+python3 leader_formation.py --port <PORT> imu
+python3 leader_formation.py --port <PORT> encoder
+python3 leader_formation.py --port <PORT> reset
+
+# Immediate STOP, including after Ctrl-C, a fault, serial failure, and normal exit.
+python3 leader_formation.py --port <PORT> stop
+
+# Timed manual test. Nano enforces -165..165 PWM and 50..1200 ms.
+python3 leader_formation.py --port <PORT> motor 80 80 500 --unlock
 ```
 
-The Pi currently detects the Nano as a CH340 converter. Its `by-id` path is
-absent because the converter exposes no unique serial number, so the default
-uses the stable `by-path` link for the USB socket currently used. If the Nano
-is moved to a different Pi USB socket, run `ls -l /dev/serial/by-path/` and
-pass its new path explicitly with `--port`.
+`motor` requires `--unlock` and a typed `MOTOR` confirmation. Pi boot never
+sends `MOTOR` or `PATH`.
 
-## Commands
+## Leader part of the formation algorithm
+
+The Leader does not try to steer every follower. Its job is to execute a safe
+firmware path and publish an authoritative, measured reference frame:
+
+```text
+Nano PATH 1 or 2
+       ↓  (IO,TELEMETRY,0,... / IO,STATUS,...)
+Pi leader publisher
+       ↓  JSON UDP or stdout
+Follower reference generator
+       ↓
+each follower's local safety checks and motor controller
+```
+
+Start a leader path only after the preflight checks, explicit `--unlock`, and a
+typed confirmation:
 
 ```bash
-# Stops first, then checks MPU/encoder/fault status. Does not move.
-python3 rover_control.py inspect
-
-# Stops immediately. Also used automatically on Ctrl-C and normal exit.
-python3 rover_control.py stop
-
-# With the car completely stationary, calibrate the MPU6050 gyro Z bias.
-python3 rover_control.py calibrate --confirm-still
-
-# Suspended-wheel wiring/direction test: M80,80 for about 0.2 seconds.
-python3 rover_control.py pulse --seconds 0.2 --pwm 80 --unlock
-
-# Explicitly unlock, then type G1 at the confirmation prompt.
-python3 rover_control.py run G1 --unlock
+# PATH 1 is 500 mm straight; PATH 2 is 700 mm square.
+# Broadcast measured leader state to the follower network every 500 ms.
+python3 leader_formation.py --port <PORT> leader 1 --unlock \
+  --broadcast 239.42.0.1:5005
 ```
 
-Available firmware trajectories:
+The broadcast is UTF-8 JSON, one UDP datagram per observed pose:
 
-| Command | Nano trajectory |
-| --- | --- |
-| `G1` | 500 mm straight line |
-| `G2` | 400 mm × 400 mm square |
-| `G3` | 350 mm L-shaped path |
+```json
+{"type":"leader_state","version":1,"monotonic_s":123.456,"status":{"x_mm":0.0,"y_mm":0.0,"heading_deg":0.0}}
+```
 
-`run` always sends `S`, reads `I`, `D`, and `P`, and blocks the trajectory
-unless it sees `present=yes`, `calibrated=yes`, `encoder_preflight=passed`, and
-`fault=none`. It then requires both `--unlock` and a typed trajectory name.
-Pressing Ctrl-C makes a best-effort `S` transmission before the program exits.
+The complete `status` object also contains mode, wheel counts/speeds/PWM,
+fault and preflight flags, and the active path/step. A follower must reject
+stale frames, a nonzero `fault_code`, or a non-ready leader; it must stop itself
+when frames time out. UDP is intentionally optional: without `--broadcast`,
+the exact same frames are printed to stdout for logging and test.
 
-`pulse` is only a short wiring/direction test. It sends equal left/right PWM,
-waits for the requested duration, and sends `S`; its duration is approximate
-and must not be used to target a number of wheel rotations.
+For follower *i* with a desired fixed formation offset `(d_x, d_y)` expressed
+in the Leader body frame, calculate the target in world coordinates from the
+measured leader state:
 
-Before moving, clear the route, keep the wheels off the ground for initial
-tests, and retain a physical way to remove motor power. A serial disconnect is
-also handled by the Nano's firmware-side safety timeout; it is not a substitute
-for a physical emergency stop.
+```text
+theta = heading_deg × π / 180
+x_i* = x_leader + cos(theta) d_x - sin(theta) d_y
+y_i* = y_leader + sin(theta) d_x + cos(theta) d_y
+theta_i* = theta
+```
 
-## Scope
+This is a leader–follower rigid-formation reference generator: it compensates
+for the Leader's actual pose drift before commands reach the followers. Each
+follower should perform its own local pose control and never forward raw motor
+commands received over UDP.
 
-The installed Nano firmware exposes only `G1`, `G2`, and `G3`; it has no
-protocol for arbitrary waypoints, velocities, or continuous Pi-side trajectory
-streaming. Supporting other paths requires adding a new, safety-reviewed Nano
-firmware command rather than attempting wheel PID control from Linux.
+The firmware currently permits Leader `PATH 1` and `PATH 2` only. It does not
+accept continuous Pi-side wheel PID or arbitrary leader paths, so this program
+does not attempt either.
+
+## Safety contract
+
+- USB open waits two seconds; USB loss, protocol error, Ctrl-C, a fault, and
+  process exit trigger a best-effort `IO,<seq>,STOP`.
+- `PATH` is blocked until IMU, encoder and fault preflight passes.
+- `TELEMETRY` is disabled in cleanup after leader mode ends.
+- Always keep a physical way to remove motor power; software STOP is not a
+  substitute for it.

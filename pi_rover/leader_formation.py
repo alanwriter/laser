@@ -28,6 +28,8 @@ BAUD = 115200
 MAX_PWM = 165
 MIN_MOTOR_MS = 50
 MAX_MOTOR_MS = 1200
+MIN_TELEMETRY_MS = 100
+MAX_TELEMETRY_MS = 2000
 
 
 @dataclass(frozen=True)
@@ -327,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     motor.add_argument("--unlock", action="store_true")
     leader = actions.add_parser("leader", help="Run PATH 1/2 and publish measured leader poses for followers.")
     leader.add_argument("path", type=int, choices=(1, 2))
-    leader.add_argument("--telemetry-ms", type=int, default=500, help="Nano status interval, 50..5000 ms (default 500).")
+    leader.add_argument("--telemetry-ms", type=int, default=500, help="Nano status interval, 100..2000 ms (default 500).")
     leader.add_argument("--broadcast", help="Optional follower network destination, HOST:PORT (UDP).")
     leader.add_argument("--unlock", action="store_true")
     return parser
@@ -385,8 +387,10 @@ def main() -> int:
         elif args.action == "leader":
             if not args.unlock:
                 raise RuntimeError("Refusing leader PATH without --unlock.")
-            if not 50 <= args.telemetry_ms <= 5000:
-                raise RuntimeError("--telemetry-ms must be 50..5000.")
+            if not MIN_TELEMETRY_MS <= args.telemetry_ms <= MAX_TELEMETRY_MS:
+                raise RuntimeError(
+                    f"--telemetry-ms must be {MIN_TELEMETRY_MS}..{MAX_TELEMETRY_MS}."
+                )
             run_leader(link, args.path, args.telemetry_ms, args.broadcast)
         return 0
     except (RuntimeError, ProtocolError, serial.SerialException, OSError) as error:

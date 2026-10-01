@@ -96,6 +96,9 @@ python3 leader_formation.py --port <PORT> leader 1 --unlock \
   --broadcast 239.42.0.1:5005
 ```
 
+`--telemetry-ms` accepts `100–2000` ms; the default `500` ms is appropriate
+for the initial full-vehicle test.
+
 The broadcast is UTF-8 JSON, one UDP datagram per observed pose:
 
 ```json

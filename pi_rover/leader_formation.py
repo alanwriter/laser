@@ -576,18 +576,20 @@ def run_wave(
     if not status.ready_for_path:
         raise RuntimeError("Wave requires a successful commissioning session.")
 
-    # RESET starts the reference frame after calibration/preflight. It does not
-    # erase the Nano's gyro calibration or encoder-preflight latch.
+    require_confirmation(
+        "WAVE-3",
+        "Place Leader at the route origin and keep it still. After confirmation Pi will "
+        f"RESET its odometry, then command a {plan.length_mm / 1000:.1f} m, "
+        f"{plan.cycles}-cycle +/-{plan.amplitude_mm:.0f} mm sine wave. Retain physical "
+        "motor cutoff.",
+    )
+    # RESET only after the operator has placed the rover at the route origin.
+    # It preserves gyro calibration/encoder preflight while defining an odometry
+    # frame that excludes any manual placement movement.
     print(link.request("RESET").raw)
     origin = parse_status_fields(link.request("STATUS").fields)
     if not origin.ready_for_path:
         raise RuntimeError("RESET did not preserve a ready Nano state; refusing to move.")
-
-    require_confirmation(
-        "WAVE-3",
-        "Pi will command a 3 m, three-cycle +/-200 mm sine wave. "
-        "Clear at least a 3.5 m by 1.2 m lane and retain physical motor cutoff.",
-    )
     publisher = LeaderPublisher(broadcast)
     started_at = time.monotonic()
     current = origin

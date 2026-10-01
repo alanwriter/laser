@@ -369,15 +369,19 @@ def run_follow(
     """Commission F1, then follow only fresh and safe Leader packets."""
     validate_plan(plan)
     commission(link, test_pwm, test_duration_ms)
+    require_confirmation(
+        "FOLLOWER-1",
+        "Place F1 at its declared start pose and keep it still. After confirmation Pi "
+        "will RESET its odometry at that pose, then wait for Leader broadcast. Retain "
+        "physical motor-power cutoff.",
+    )
+    # RESET must happen *after* the vehicle is physically placed. Moving a
+    # rover after RESET makes its encoders/IMU interpret placement as travel,
+    # which corrupts the shared formation-frame origin before the first frame.
     print(link.request("RESET").raw)
     initial = parse_status_fields(link.request("STATUS").fields)
     if not initial.ready_for_path:
         raise RuntimeError("F1 RESET did not preserve ready state; refusing formation control.")
-    require_confirmation(
-        "FOLLOWER-1",
-        "Place F1 at its declared start pose, clear the route, start Leader broadcast, "
-        "and retain physical motor-power cutoff.",
-    )
     tracker = FormationTracker(plan)
     latest: LeaderFrame | None = None
     consecutive_active_frames = 0

@@ -232,8 +232,10 @@ python3 leader_formation.py \
   --speed-mm-s 25 --broadcast 239.42.0.1:5005
 ```
 
-Type `FOLLOWER-1` only after F1 is placed at its start position, then type
-`WAVE-3` on Leader. F1 begins only after three fresh Leader frames whose
+Place both rovers first. Type `FOLLOWER-1` only after F1 is placed at its start
+position; this resets F1 odometry at the declared formation pose. Then type
+`WAVE-3` after Leader is at the route origin; this resets Leader odometry just
+before broadcast and motion. F1 begins only after three fresh Leader frames whose
 IMU/encoder/fault checks pass and whose mode is `velocity` or `path`.
 
 F1 uses a polar outer loop to the left-rear virtual target: `rho` is target

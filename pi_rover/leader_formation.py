@@ -36,7 +36,7 @@ MAX_TELEMETRY_MS = 2000
 
 @dataclass(frozen=True)
 class WavePlan:
-    """A Pi-planned sine wave expressed in the Leader's start frame."""
+    """A Pi-planned, eased sine wave expressed in the Leader's start frame."""
 
     length_mm: float = 3000.0
     amplitude_mm: float = 200.0
@@ -347,12 +347,14 @@ def validate_wave_plan(plan: WavePlan) -> None:
 
 
 def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> WaveControl:
-    """Return the next short VELOCITY setpoint for a sine wave.
+    """Return the next short VELOCITY setpoint for a smooth sine wave.
 
-    The waveform is y = A sin(2*pi*N*x/L) in the coordinate frame recorded
-    immediately after RESET. The Pi computes body-frame wheel-speed targets;
-    Nano's already-tuned encoder velocity controller owns PID, static-friction
-    feed-forward, acceleration limiting and PWM generation.
+    The oscillation is sine-shaped but has a zero tangent and zero curvature
+    at its endpoints. A raw sine begins with its maximum tangent; that made
+    the Leader turn sharply from rest and moved a left-rear virtual follower
+    target behind F1 before it could start safely. The Pi computes body-frame
+    wheel-speed targets; Nano's already-tuned encoder velocity controller owns
+    PID, static-friction feed-forward, acceleration limiting and PWM generation.
     """
     origin_heading_rad = math.radians(origin.heading_deg)
     dx_mm = status.x_mm - origin.x_mm
@@ -360,14 +362,22 @@ def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> Wa
     forward_mm = math.cos(origin_heading_rad) * dx_mm + math.sin(origin_heading_rad) * dy_mm
     lateral_mm = -math.sin(origin_heading_rad) * dx_mm + math.cos(origin_heading_rad) * dy_mm
     path_x_mm = clamp(forward_mm, 0.0, plan.length_mm)
-    phase = 2.0 * math.pi * plan.cycles * path_x_mm / plan.length_mm
-    desired_lateral_mm = plan.amplitude_mm * math.sin(phase)
-    desired_slope = plan.amplitude_mm * math.cos(phase) * 2.0 * math.pi * plan.cycles / plan.length_mm
-    tangent_deg = math.degrees(math.atan2(desired_slope, 1.0))
-    desired_curvature_per_mm = (
-        -plan.amplitude_mm * (2.0 * math.pi * plan.cycles / plan.length_mm) ** 2 * math.sin(phase)
-        / (1.0 + desired_slope ** 2) ** 1.5
+    phase_rate_per_mm = 2.0 * math.pi * plan.cycles / plan.length_mm
+    phase = phase_rate_per_mm * path_x_mm
+    # Eased sine: k*sin(phi)*(1-cos(phi))/2. k normalizes its extrema to A.
+    # It retains alternating left/right lobes while y', y'' are both zero at
+    # the start and end of every supervised route.
+    eased_scale = 8.0 / (3.0 * math.sqrt(3.0))
+    envelope = 0.5 * (1.0 - math.cos(phase))
+    desired_lateral_mm = plan.amplitude_mm * eased_scale * math.sin(phase) * envelope
+    desired_slope = plan.amplitude_mm * eased_scale * phase_rate_per_mm * (
+        math.cos(phase) * envelope + 0.5 * math.sin(phase) ** 2
     )
+    tangent_deg = math.degrees(math.atan2(desired_slope, 1.0))
+    desired_slope_derivative = plan.amplitude_mm * eased_scale * phase_rate_per_mm ** 2 * (
+        -math.sin(phase) * envelope + 1.5 * math.sin(phase) * math.cos(phase)
+    )
+    desired_curvature_per_mm = desired_slope_derivative / (1.0 + desired_slope ** 2) ** 1.5
     cross_track_deg = math.degrees(math.atan2(
         desired_lateral_mm - lateral_mm, plan.cross_track_lookahead_mm,
     ))

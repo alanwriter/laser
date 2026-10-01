@@ -40,15 +40,15 @@ class LeaderProtocolTests(unittest.TestCase):
     def test_ignores_non_io_boot_text(self) -> None:
         self.assertIsNone(NanoLink.parse(b"Nano booting...\n"))
 
-    def test_wave_starts_with_three_cycle_sine_tangent(self) -> None:
+    def test_wave_starts_with_zero_tangent_for_safe_follower_takeoff(self) -> None:
         origin = parse_status_fields(STATUS)
         control = wave_control(origin, origin, WavePlan())
         self.assertAlmostEqual(control.forward_mm, 0.0)
         self.assertAlmostEqual(control.desired_lateral_mm, 0.0)
-        self.assertAlmostEqual(control.desired_heading_deg - origin.heading_deg, 51.49, places=1)
-        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (2, 49))
+        self.assertAlmostEqual(control.desired_heading_deg, origin.heading_deg, places=3)
+        self.assertEqual(control.left_mm_per_second, control.right_mm_per_second)
 
-    def test_wave_reference_reaches_positive_amplitude_after_250_mm(self) -> None:
+    def test_wave_reference_is_smooth_and_positive_after_250_mm(self) -> None:
         origin_fields = list(STATUS)
         origin_fields[1] = "0.0"
         origin_fields[2] = "0.0"
@@ -60,9 +60,9 @@ class LeaderProtocolTests(unittest.TestCase):
         point = parse_status_fields(fields)
         control = wave_control(point, origin, WavePlan())
         self.assertAlmostEqual(control.forward_mm, 250.0)
-        self.assertAlmostEqual(control.desired_lateral_mm, 200.0, places=3)
-        self.assertAlmostEqual(control.desired_heading_deg, origin.heading_deg, places=3)
-        self.assertGreater(control.left_mm_per_second, control.right_mm_per_second)
+        self.assertAlmostEqual(control.desired_lateral_mm, 153.960, places=3)
+        self.assertGreater(control.desired_heading_deg, origin.heading_deg)
+        self.assertLess(control.left_mm_per_second, control.right_mm_per_second)
 
     def test_wave_csv_log_records_status_and_control(self) -> None:
         status = parse_status_fields(STATUS)

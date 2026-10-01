@@ -196,6 +196,50 @@ paths, Pi computes a high-level steering correction and repeatedly sends
 short wheel-speed setpoints. The Nano's existing controller—not Pi—converts
 these into PWM and retains the mandatory auto-stop timeout.
 
+## Follower 1 formation controller
+
+`follower_formation.py` is the only process allowed to open F1's Nano USB
+port. It accepts only a versioned `leader_state` UDP pose packet from the
+explicit `--leader-host`; it never accepts PWM over the network. It maps F1's
+locally reset odometry frame into the shared experiment frame, then sends
+short `VELOCITY` targets to F1's calibrated Nano controller.
+
+For the first test, align both cars with the same heading and place F1 exactly
+400 mm directly behind Leader. The default F1 target and origin are both
+`(-400 mm, 0 mm)` in the Leader's initial frame. Keep a clear 3.5 m by 1.2 m
+lane, physical motor-power cutoffs, and two SSH terminals.
+
+```bash
+# F1 terminal: this performs the explicit stationary calibration and lifted
+# wheel encoder test, then waits for the FOLLOWER-1 confirmation. It remains
+# stopped until Leader starts publishing a ready, moving pose.
+cd ~/pi_rover
+python3 follower_formation.py \
+  --port /dev/serial/by-id/<F1-Nano裝置名稱> \
+  --leader-host 192.168.1.166 \
+  --listen 0.0.0.0:5005 \
+  --multicast-group 239.42.0.1 \
+  --unlock
+
+# Leader terminal: use the same multicast destination. This stays local to
+# the current LAN (TTL=1) and publishes at the existing 10 Hz wave rate.
+cd ~/pi_rover
+python3 leader_formation.py \
+  --port /dev/serial/by-id/<Leader-Nano裝置名稱> \
+  wave --unlock --speed-mm-s 55 --broadcast 239.42.0.1:5005
+```
+
+Type `FOLLOWER-1` only after F1 is placed at its start position, then type
+`WAVE-3` on Leader. F1 begins only when it receives a fresh Leader frame whose
+IMU/encoder/fault checks pass and whose mode is `velocity` or `path`. A packet
+older than 0.35 s, a stopped/faulted Leader, F1 fault, serial loss, Ctrl-C, or
+normal process exit sends F1 `STOP`.
+
+Changing laboratories or switching to the vehicles' own Wi-Fi needs no code
+change: join all Pi devices to that same local network, then replace only
+`--leader-host` with Leader's new local address. The multicast endpoint may
+stay `239.42.0.1:5005`; it is not a public Internet service.
+
 ## Safety contract
 
 - USB open waits two seconds; USB loss, protocol error, Ctrl-C, a fault, and

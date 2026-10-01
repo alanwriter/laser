@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import csv
+import ipaddress
 import json
 import math
 import signal
@@ -432,6 +433,14 @@ class LeaderPublisher:
             if not separator or not host or not port.isdecimal():
                 raise RuntimeError("--broadcast must use HOST:PORT, for example 239.42.0.1:5005")
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                if ipaddress.ip_address(host).is_multicast:
+                    # Formation traffic stays on the current local network;
+                    # it must never leak through a router onto another LAN.
+                    self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+            except ValueError:
+                # A resolvable hostname is valid for ordinary unicast UDP.
+                pass
             self.destination = (host, int(port))
 
     def publish(self, status: RoverStatus) -> None:

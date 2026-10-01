@@ -91,9 +91,10 @@ PASSED` only when `imu_present=1`, `imu_calibrated=1`,
 ## Pi-planned wave test
 
 Arbitrary experimental trajectories belong on the Pi, not in Nano firmware.
-The Nano keeps its low-level safety role: it accepts only bounded `MOTOR` PWM
-commands (each expires within 1200 ms), measures pose, and stops on `STOP` or a
-fault. The Pi is the single USB owner and is responsible for the path planner.
+The Nano keeps its low-level safety role and runs the existing calibrated wheel
+velocity controller: PID, static-friction feed-forward, acceleration limit,
+encoder measurement, PWM and expiry stop. The Pi is the single USB owner and
+is responsible only for the path planner.
 
 This command runs the requested 3 m route with three full sine periods and
 ±200 mm lateral amplitude:
@@ -104,13 +105,15 @@ y = 200 × sin(6πx / 3000),  x = 0…3000 mm
 
 ```bash
 # It calibrates and checks encoders in this same USB session, asks for
-# CALIBRATE, MOTOR, and WAVE-3 confirmations, then sends 320 ms PWM pulses.
+# CALIBRATE, MOTOR, and WAVE-3 confirmations, then sends 180 ms wheel-speed
+# setpoints to the Nano's existing controller.
 python3 leader_formation.py --port <PORT> wave --unlock
 ```
 
-The initial tuning is deliberately conservative (`PWM 70`, 4 Hz replanning,
-PWM range 30–120). Clear at least a 3.5 m × 1.2 m lane. `Ctrl-C`, USB loss,
-bad status, fault, or the 150 s deadline causes a best-effort `STOP`.
+The initial tuning is deliberately conservative (45 mm/s, 10 Hz Pi replanning,
+180 ms setpoint expiry). Clear at least a 3.5 m × 1.2 m lane. `Ctrl-C`, USB
+loss, bad status, fault, finish-corridor overrun, or the 180 s deadline causes
+a best-effort `STOP`.
 
 It is normal for this mathematical sine wave to start and finish with a
 non-zero tangent (about 51.5°): it returns to the original lateral line but
@@ -127,8 +130,8 @@ firmware path and publish an authoritative, measured reference frame:
 
 ```text
 Pi path / formation planner
-       ↓  (bounded IO,MOTOR,<left>,<right>,<expiry>)
-Nano motor actuation + IMU/encoder odometry
+       ↓  (bounded IO,VELOCITY,<left_mm_s>,<right_mm_s>,<expiry>)
+Nano trained wheel-speed controller + IMU/encoder odometry
        ↓  (IO,STATUS,...)
 Pi leader publisher
        ↓  JSON UDP or stdout
@@ -180,9 +183,9 @@ follower should perform its own local pose control and never forward raw motor
 commands received over UDP.
 
 Firmware `PATH 1` and `PATH 2` remain useful built-in diagnostics. For new
-paths, the Pi does not bypass Nano safety or claim Nano offers a velocity API:
-it computes a high-level steering correction and repeatedly sends short raw
-PWM commands, each with Nano's mandatory auto-stop timeout.
+paths, Pi computes a high-level steering correction and repeatedly sends
+short wheel-speed setpoints. The Nano's existing controller—not Pi—converts
+these into PWM and retains the mandatory auto-stop timeout.
 
 ## Safety contract
 

@@ -40,15 +40,19 @@ class WavePlan:
     length_mm: float = 3000.0
     amplitude_mm: float = 200.0
     cycles: int = 3
-    cruise_pwm: int = 70
-    min_pwm: int = 30
-    max_pwm: int = 120
-    heading_gain_pwm_per_deg: float = 0.8
-    max_steering_pwm: float = 40.0
+    cruise_mm_per_second: float = 45.0
+    min_mm_per_second: float = 18.0
+    max_wheel_mm_per_second: float = 100.0
+    heading_gain_radians_per_second_per_radian: float = 1.5
+    max_yaw_rate_radians_per_second: float = 0.65
     cross_track_lookahead_mm: float = 260.0
-    command_ms: int = 320
-    control_period_s: float = 0.25
-    max_runtime_s: float = 150.0
+    wheel_track_mm: float = 130.0
+    completion_lateral_tolerance_mm: float = 50.0
+    completion_heading_tolerance_deg: float = 12.0
+    max_finish_overrun_mm: float = 400.0
+    command_ms: int = 180
+    control_period_s: float = 0.10
+    max_runtime_s: float = 180.0
 
 
 @dataclass(frozen=True)
@@ -58,8 +62,8 @@ class WaveControl:
     desired_lateral_mm: float
     desired_heading_deg: float
     heading_error_deg: float
-    left_pwm: int
-    right_pwm: int
+    left_mm_per_second: int
+    right_mm_per_second: int
 
 
 @dataclass(frozen=True)
@@ -270,8 +274,10 @@ def validate_wave_plan(plan: WavePlan) -> None:
         raise RuntimeError("Wave cycles must be 1..3 for this supervised test.")
     if not 0.0 < plan.amplitude_mm <= 250.0:
         raise RuntimeError("Wave amplitude must be greater than 0 and at most 250 mm.")
-    if not 1 <= plan.min_pwm <= plan.cruise_pwm <= plan.max_pwm <= MAX_PWM:
-        raise RuntimeError("Require 1 <= min PWM <= cruise PWM <= max PWM <= 165.")
+    if not 0.0 < plan.min_mm_per_second <= plan.cruise_mm_per_second <= plan.max_wheel_mm_per_second <= 100.0:
+        raise RuntimeError("Require 0 < min speed <= cruise speed <= max wheel speed <= 100 mm/s.")
+    if plan.wheel_track_mm <= 0.0:
+        raise RuntimeError("Wheel track must be positive.")
     if not 0.0 < plan.control_period_s < plan.command_ms / 1000.0:
         raise RuntimeError("Control period must be positive and shorter than MOTOR timeout.")
     if not MIN_MOTOR_MS <= plan.command_ms <= MAX_MOTOR_MS:
@@ -281,11 +287,12 @@ def validate_wave_plan(plan: WavePlan) -> None:
 
 
 def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> WaveControl:
-    """Return the next short, forward-only MOTOR command for a sine wave.
+    """Return the next short VELOCITY setpoint for a sine wave.
 
     The waveform is y = A sin(2*pi*N*x/L) in the coordinate frame recorded
-    immediately after RESET.  Tangent feed-forward sets the path heading and a
-    bounded look-ahead term corrects lateral drift from Nano's measured pose.
+    immediately after RESET. The Pi computes body-frame wheel-speed targets;
+    Nano's already-tuned encoder velocity controller owns PID, static-friction
+    feed-forward, acceleration limiting and PWM generation.
     """
     origin_heading_rad = math.radians(origin.heading_deg)
     dx_mm = status.x_mm - origin.x_mm
@@ -297,26 +304,55 @@ def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> Wa
     desired_lateral_mm = plan.amplitude_mm * math.sin(phase)
     desired_slope = plan.amplitude_mm * math.cos(phase) * 2.0 * math.pi * plan.cycles / plan.length_mm
     tangent_deg = math.degrees(math.atan2(desired_slope, 1.0))
+    desired_curvature_per_mm = (
+        -plan.amplitude_mm * (2.0 * math.pi * plan.cycles / plan.length_mm) ** 2 * math.sin(phase)
+        / (1.0 + desired_slope ** 2) ** 1.5
+    )
     cross_track_deg = math.degrees(math.atan2(
         desired_lateral_mm - lateral_mm, plan.cross_track_lookahead_mm,
     ))
     desired_heading_deg = origin.heading_deg + tangent_deg + clamp(cross_track_deg, -18.0, 18.0)
     heading_error_deg = wrap_degrees(desired_heading_deg - status.heading_deg)
-    steering_pwm = clamp(
-        heading_error_deg * plan.heading_gain_pwm_per_deg,
-        -plan.max_steering_pwm,
-        plan.max_steering_pwm,
+    remaining_mm = max(0.0, plan.length_mm - forward_mm)
+    base_speed_mm_per_second = clamp(
+        remaining_mm * 0.20,
+        plan.min_mm_per_second,
+        plan.cruise_mm_per_second,
     )
-    left_pwm = round(clamp(plan.cruise_pwm - steering_pwm, plan.min_pwm, plan.max_pwm))
-    right_pwm = round(clamp(plan.cruise_pwm + steering_pwm, plan.min_pwm, plan.max_pwm))
+    # Slow translation while heading is far from the reference, so the cheap
+    # chassis has time to turn instead of carving a large, delayed arc.
+    base_speed_mm_per_second *= clamp(1.0 - abs(heading_error_deg) / 120.0, 0.40, 1.0)
+    yaw_rate = (
+        base_speed_mm_per_second * desired_curvature_per_mm
+        + plan.heading_gain_radians_per_second_per_radian * math.radians(heading_error_deg)
+    )
+    # Keep both wheels moving forward for the initial smooth experiment. This
+    # avoids a surprise pivot and lets the trained wheel-speed controller deal
+    # with motor dead-zone asymmetry.
+    forward_only_yaw_limit = 0.92 * 2.0 * base_speed_mm_per_second / plan.wheel_track_mm
+    yaw_rate = clamp(
+        yaw_rate,
+        -min(plan.max_yaw_rate_radians_per_second, forward_only_yaw_limit),
+        min(plan.max_yaw_rate_radians_per_second, forward_only_yaw_limit),
+    )
+    left_mm_per_second = round(clamp(
+        base_speed_mm_per_second - plan.wheel_track_mm * yaw_rate / 2.0,
+        -plan.max_wheel_mm_per_second,
+        plan.max_wheel_mm_per_second,
+    ))
+    right_mm_per_second = round(clamp(
+        base_speed_mm_per_second + plan.wheel_track_mm * yaw_rate / 2.0,
+        -plan.max_wheel_mm_per_second,
+        plan.max_wheel_mm_per_second,
+    ))
     return WaveControl(
         forward_mm=forward_mm,
         lateral_mm=lateral_mm,
         desired_lateral_mm=desired_lateral_mm,
         desired_heading_deg=desired_heading_deg,
         heading_error_deg=heading_error_deg,
-        left_pwm=left_pwm,
-        right_pwm=right_pwm,
+        left_mm_per_second=left_mm_per_second,
+        right_mm_per_second=right_mm_per_second,
     )
 
 
@@ -456,11 +492,11 @@ def run_leader(link: NanoLink, status: RoverStatus, path: int, telemetry_ms: int
 
 
 def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str | None) -> None:
-    """Execute a Pi-planned, Nano-actuated wave using bounded MOTOR pulses.
+    """Execute a Pi-planned, Nano-actuated wave using VELOCITY setpoints.
 
-    This deliberately does not use Nano PATH.  The Pi owns the high-level
-    trajectory and sends only short expiry-protected PWM commands.  Nano stays
-    the sole serial owner and provides the measured pose and final motor stop.
+    This deliberately does not use Nano PATH. The Pi owns the high-level
+    trajectory; Nano runs the existing trained wheel-speed controller at its
+    native control frequency and auto-stops if a short setpoint expires.
     """
     validate_wave_plan(plan)
     if not status.ready_for_path:
@@ -483,8 +519,9 @@ def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str
     current = origin
     try:
         print(
-            "Wave started: Pi closed-loop tracker at "
-            f"{1.0 / plan.control_period_s:.1f} Hz; each MOTOR command expires in {plan.command_ms} ms."
+            "Wave started: Pi path tracker at "
+            f"{1.0 / plan.control_period_s:.1f} Hz; Nano wheel-speed control stays active between updates. "
+            f"Each VELOCITY setpoint expires in {plan.command_ms} ms."
         )
         while True:
             if not current.ready_for_path:
@@ -501,18 +538,30 @@ def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str
                 f"x={control.forward_mm:.0f} y={control.lateral_mm:.0f} "
                 f"target_y={control.desired_lateral_mm:.0f} "
                 f"heading_error={control.heading_error_deg:.1f} "
-                f"pwm=({control.left_pwm},{control.right_pwm})"
+                f"speed_mm_s=({control.left_mm_per_second},{control.right_mm_per_second})"
             )
-            if control.forward_mm >= plan.length_mm:
+            if (
+                control.forward_mm >= plan.length_mm
+                and abs(control.lateral_mm) <= plan.completion_lateral_tolerance_mm
+                and abs(control.heading_error_deg) <= plan.completion_heading_tolerance_deg
+            ):
                 link.stop_safely()
                 final = parse_status_fields(link.request("STATUS").fields)
                 publisher.publish(final)
                 print_status(final)
                 print("Wave completed. Nano is stopped.")
                 return
+            if control.forward_mm > plan.length_mm + plan.max_finish_overrun_mm:
+                raise RuntimeError("Wave exceeded its finish corridor; stopping.")
 
             cycle_started_at = time.monotonic()
-            link.request("MOTOR", control.left_pwm, control.right_pwm, plan.command_ms, wait=0.7)
+            link.request(
+                "VELOCITY",
+                control.left_mm_per_second,
+                control.right_mm_per_second,
+                plan.command_ms,
+                wait=0.7,
+            )
             delay_s = plan.control_period_s - (time.monotonic() - cycle_started_at)
             if delay_s > 0:
                 time.sleep(delay_s)
@@ -555,14 +604,14 @@ def build_parser() -> argparse.ArgumentParser:
     leader.add_argument("--unlock", action="store_true")
     wave = actions.add_parser(
         "wave",
-        help="Pi-planned 3 m / three-cycle sine wave using short, expiry-protected MOTOR commands.",
+        help="Pi-planned 3 m / three-cycle sine wave using the Nano trained wheel-speed controller.",
     )
     wave.add_argument("--length-mm", type=float, default=3000.0)
     wave.add_argument("--amplitude-mm", type=float, default=200.0)
     wave.add_argument("--cycles", type=int, default=3)
-    wave.add_argument("--cruise-pwm", type=int, default=70)
-    wave.add_argument("--command-ms", type=int, default=320, help="Per-command Nano auto-stop timeout (default 320).")
-    wave.add_argument("--max-runtime-s", type=float, default=150.0)
+    wave.add_argument("--speed-mm-s", type=float, default=45.0, help="Nominal chassis speed (default 45 mm/s).")
+    wave.add_argument("--command-ms", type=int, default=180, help="Per-command Nano auto-stop timeout (default 180).")
+    wave.add_argument("--max-runtime-s", type=float, default=180.0)
     wave.add_argument("--broadcast", help="Optional follower network destination, HOST:PORT (UDP).")
     wave.add_argument("--test-pwm", type=int, default=80, help="Pre-wave encoder-test PWM, 1..165 (default 80).")
     wave.add_argument("--test-duration-ms", type=int, default=800, help="Pre-wave encoder-test duration, 50..1200 ms (default 800).")
@@ -651,7 +700,7 @@ def main() -> int:
                 length_mm=args.length_mm,
                 amplitude_mm=args.amplitude_mm,
                 cycles=args.cycles,
-                cruise_pwm=args.cruise_pwm,
+                cruise_mm_per_second=args.speed_mm_s,
                 command_ms=args.command_ms,
                 max_runtime_s=args.max_runtime_s,
             )

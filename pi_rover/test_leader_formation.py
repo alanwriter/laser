@@ -38,7 +38,7 @@ class LeaderProtocolTests(unittest.TestCase):
         self.assertAlmostEqual(control.forward_mm, 0.0)
         self.assertAlmostEqual(control.desired_lateral_mm, 0.0)
         self.assertAlmostEqual(control.desired_heading_deg - origin.heading_deg, 51.49, places=1)
-        self.assertEqual((control.left_pwm, control.right_pwm), (30, 110))
+        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (2, 49))
 
     def test_wave_reference_reaches_positive_amplitude_after_250_mm(self) -> None:
         origin_fields = list(STATUS)
@@ -54,6 +54,7 @@ class LeaderProtocolTests(unittest.TestCase):
         self.assertAlmostEqual(control.forward_mm, 250.0)
         self.assertAlmostEqual(control.desired_lateral_mm, 200.0, places=3)
         self.assertAlmostEqual(control.desired_heading_deg, origin.heading_deg, places=3)
+        self.assertGreater(control.left_mm_per_second, control.right_mm_per_second)
 
 
 if __name__ == "__main__":

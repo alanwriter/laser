@@ -48,18 +48,18 @@ class FormationPlan:
 
     ``offset_*`` is expressed in the Leader body frame.  ``follower_start_*``
     maps F1's freshly RESET Nano frame into the same experiment frame as the
-    Leader.  The defaults mean 200 mm rearward (-x) and 200 mm leftward (+y):
-    F1 starts at Leader's left-rear 45-degree position, 282.8 mm away.
+    Leader.  The defaults mean 400 mm rearward (-x) and 400 mm leftward (+y):
+    F1 starts at Leader's left-rear 45-degree position, 565.7 mm away.
 
     The outer loop is intentionally polar: rho is distance to the virtual
     target, alpha is its bearing from F1's forward direction, and beta closes
     the target heading.  The Nano remains the owner of wheel-speed PID/PWM.
     """
 
-    offset_x_mm: float = -200.0
-    offset_y_mm: float = 200.0
-    follower_start_x_mm: float = -200.0
-    follower_start_y_mm: float = 200.0
+    offset_x_mm: float = -400.0
+    offset_y_mm: float = 400.0
+    follower_start_x_mm: float = -400.0
+    follower_start_y_mm: float = 400.0
     follower_start_heading_deg: float = 0.0
     distance_gain_per_second: float = 0.30
     bearing_gain_radians_per_second_per_radian: float = 1.20
@@ -70,7 +70,7 @@ class FormationPlan:
     max_target_error_mm: float = 250.0
     max_bearing_error_deg: float = 60.0
     min_leader_distance_mm: float = 180.0
-    max_leader_distance_mm: float = 500.0
+    max_leader_distance_mm: float = 750.0
     command_ms: int = 180
     control_period_s: float = 0.10
     frame_timeout_s: float = 0.35
@@ -434,10 +434,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--listen", default="0.0.0.0:5005", help="local UDP bind endpoint (default 0.0.0.0:5005)")
     parser.add_argument("--leader-host", required=True, help="required source IPv4 address of the Leader Pi")
     parser.add_argument("--multicast-group", help="join this IPv4 multicast group, e.g. 239.42.0.1")
-    parser.add_argument("--offset-x-mm", type=float, default=-200.0, help="F1 target x in Leader body frame (default -200, rear)")
-    parser.add_argument("--offset-y-mm", type=float, default=200.0, help="F1 target y in Leader body frame (default +200, left)")
-    parser.add_argument("--follower-start-x-mm", type=float, default=-200.0, help="F1 Nano RESET origin in experiment frame")
-    parser.add_argument("--follower-start-y-mm", type=float, default=200.0, help="F1 Nano RESET origin in experiment frame")
+    parser.add_argument("--offset-x-mm", type=float, default=-400.0, help="F1 target x in Leader body frame (default -400, rear)")
+    parser.add_argument("--offset-y-mm", type=float, default=400.0, help="F1 target y in Leader body frame (default +400, left)")
+    parser.add_argument("--follower-start-x-mm", type=float, default=-400.0, help="F1 Nano RESET origin in experiment frame")
+    parser.add_argument("--follower-start-y-mm", type=float, default=400.0, help="F1 Nano RESET origin in experiment frame")
     parser.add_argument("--follower-start-heading-deg", type=float, default=0.0, help="F1 initial heading relative to Leader frame")
     parser.add_argument("--max-speed-mm-s", type=float, default=45.0)
     parser.add_argument("--command-ms", type=int, default=180)

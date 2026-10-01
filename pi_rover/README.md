@@ -205,10 +205,10 @@ locally reset odometry frame into the shared experiment frame, then sends
 short `VELOCITY` targets to F1's calibrated Nano controller.
 
 For the first test, align both cars with the same heading and place F1 exactly
-200 mm rearward and 200 mm to Leader's left. The default F1 target and origin
-are both `(-200 mm, +200 mm)` in the Leader's initial frame: a left-rear,
-45-degree formation with 282.8 mm Leader-to-F1 separation. Keep a clear 3.5 m
-by 1.2 m lane, physical motor-power cutoffs, and two SSH terminals.
+400 mm rearward and 400 mm to Leader's left. The default F1 target and origin
+are both `(-400 mm, +400 mm)` in the Leader's initial frame: a left-rear,
+45-degree formation with 565.7 mm Leader-to-F1 separation. Keep a clear 2 m
+by 1.5 m lane, physical motor-power cutoffs, and two SSH terminals.
 
 ```bash
 # F1 terminal: this performs the explicit stationary calibration and lifted
@@ -241,7 +241,7 @@ distance, `alpha` is target bearing from F1's forward direction, and `beta`
 closes target heading. The first run limits F1 to 45 mm/s and does not reverse
 or pivot on its own. A packet older than 0.35 s, stopped/faulted Leader, F1
 fault, serial loss, Ctrl-C, normal process exit, Leader distance below 180 mm
-or above 500 mm, target error above 250 mm, or bearing error above 60 degrees
+or above 750 mm, target error above 250 mm, or bearing error above 60 degrees
 sends F1 `STOP` and requires a new arm.
 
 Changing laboratories or switching to the vehicles' own Wi-Fi needs no code

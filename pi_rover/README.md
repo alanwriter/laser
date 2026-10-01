@@ -88,14 +88,48 @@ It requires typing `CALIBRATE`, then `MOTOR`; it sends equal PWM `80` for
 PASSED` only when `imu_present=1`, `imu_calibrated=1`,
 `encoder_preflight=1`, and `fault_code=0` coexist in the same USB session.
 
+## Pi-planned wave test
+
+Arbitrary experimental trajectories belong on the Pi, not in Nano firmware.
+The Nano keeps its low-level safety role: it accepts only bounded `MOTOR` PWM
+commands (each expires within 1200 ms), measures pose, and stops on `STOP` or a
+fault. The Pi is the single USB owner and is responsible for the path planner.
+
+This command runs the requested 3 m route with three full sine periods and
+±200 mm lateral amplitude:
+
+```text
+y = 200 × sin(6πx / 3000),  x = 0…3000 mm
+```
+
+```bash
+# It calibrates and checks encoders in this same USB session, asks for
+# CALIBRATE, MOTOR, and WAVE-3 confirmations, then sends 320 ms PWM pulses.
+python3 leader_formation.py --port <PORT> wave --unlock
+```
+
+The initial tuning is deliberately conservative (`PWM 70`, 4 Hz replanning,
+PWM range 30–120). Clear at least a 3.5 m × 1.2 m lane. `Ctrl-C`, USB loss,
+bad status, fault, or the 150 s deadline causes a best-effort `STOP`.
+
+It is normal for this mathematical sine wave to start and finish with a
+non-zero tangent (about 51.5°): it returns to the original lateral line but
+does not promise the original final heading. The terminal prints measured
+`x`, `y`, target `y`, heading error, and each PWM command for tuning.
+
+Use `--broadcast HOST:PORT` to publish the measured leader pose while it runs,
+for example `--broadcast 239.42.0.1:5005`.
+
 ## Leader part of the formation algorithm
 
 The Leader does not try to steer every follower. Its job is to execute a safe
 firmware path and publish an authoritative, measured reference frame:
 
 ```text
-Nano PATH 1 or 2
-       ↓  (IO,TELEMETRY,0,... / IO,STATUS,...)
+Pi path / formation planner
+       ↓  (bounded IO,MOTOR,<left>,<right>,<expiry>)
+Nano motor actuation + IMU/encoder odometry
+       ↓  (IO,STATUS,...)
 Pi leader publisher
        ↓  JSON UDP or stdout
 Follower reference generator
@@ -145,9 +179,10 @@ for the Leader's actual pose drift before commands reach the followers. Each
 follower should perform its own local pose control and never forward raw motor
 commands received over UDP.
 
-The firmware currently permits Leader `PATH 1` and `PATH 2` only. It does not
-accept continuous Pi-side wheel PID or arbitrary leader paths, so this program
-does not attempt either.
+Firmware `PATH 1` and `PATH 2` remain useful built-in diagnostics. For new
+paths, the Pi does not bypass Nano safety or claim Nano offers a velocity API:
+it computes a high-level steering correction and repeatedly sends short raw
+PWM commands, each with Nano's mandatory auto-stop timeout.
 
 ## Safety contract
 

@@ -2,9 +2,9 @@
 """Leader-1 controller and formation-reference publisher for the Nano L1 USB protocol.
 
 The Nano remains the only process that drives motors and owns its safety timeout.
-This Pi program never moves the rover on launch.  In ``leader`` mode it starts a
-firmware PATH only after a manual unlock and publishes the *measured* leader
-pose, rather than assuming the requested path was followed perfectly.
+This Pi program never moves the rover on launch. In ``leader`` mode it starts a
+firmware PATH; in ``wave`` mode the Pi plans a trajectory and sends only short,
+expiry-protected MOTOR commands from the Nano's measured pose.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import argparse
 import atexit
 import csv
 import json
+import math
 import signal
 import socket
 import sys
@@ -30,6 +31,35 @@ MIN_MOTOR_MS = 50
 MAX_MOTOR_MS = 1200
 MIN_TELEMETRY_MS = 100
 MAX_TELEMETRY_MS = 2000
+
+
+@dataclass(frozen=True)
+class WavePlan:
+    """A Pi-planned sine wave expressed in the Leader's start frame."""
+
+    length_mm: float = 3000.0
+    amplitude_mm: float = 200.0
+    cycles: int = 3
+    cruise_pwm: int = 70
+    min_pwm: int = 30
+    max_pwm: int = 120
+    heading_gain_pwm_per_deg: float = 0.8
+    max_steering_pwm: float = 40.0
+    cross_track_lookahead_mm: float = 260.0
+    command_ms: int = 320
+    control_period_s: float = 0.25
+    max_runtime_s: float = 150.0
+
+
+@dataclass(frozen=True)
+class WaveControl:
+    forward_mm: float
+    lateral_mm: float
+    desired_lateral_mm: float
+    desired_heading_deg: float
+    heading_error_deg: float
+    left_pwm: int
+    right_pwm: int
 
 
 @dataclass(frozen=True)
@@ -224,6 +254,72 @@ def print_status(status: RoverStatus) -> None:
     print(json.dumps(asdict(status), ensure_ascii=False, sort_keys=True))
 
 
+def clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(value, maximum))
+
+
+def wrap_degrees(angle_deg: float) -> float:
+    """Return an angle in [-180, 180), avoiding long-way steering."""
+    return (angle_deg + 180.0) % 360.0 - 180.0
+
+
+def validate_wave_plan(plan: WavePlan) -> None:
+    if not 1000.0 <= plan.length_mm <= 5000.0:
+        raise RuntimeError("Wave length must be 1000..5000 mm.")
+    if not 1 <= plan.cycles <= 3:
+        raise RuntimeError("Wave cycles must be 1..3 for this supervised test.")
+    if not 0.0 < plan.amplitude_mm <= 250.0:
+        raise RuntimeError("Wave amplitude must be greater than 0 and at most 250 mm.")
+    if not 1 <= plan.min_pwm <= plan.cruise_pwm <= plan.max_pwm <= MAX_PWM:
+        raise RuntimeError("Require 1 <= min PWM <= cruise PWM <= max PWM <= 165.")
+    if not 0.0 < plan.control_period_s < plan.command_ms / 1000.0:
+        raise RuntimeError("Control period must be positive and shorter than MOTOR timeout.")
+    if not MIN_MOTOR_MS <= plan.command_ms <= MAX_MOTOR_MS:
+        raise RuntimeError(f"MOTOR timeout must be {MIN_MOTOR_MS}..{MAX_MOTOR_MS} ms.")
+    if plan.max_runtime_s <= 0.0:
+        raise RuntimeError("Wave runtime limit must be positive.")
+
+
+def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> WaveControl:
+    """Return the next short, forward-only MOTOR command for a sine wave.
+
+    The waveform is y = A sin(2*pi*N*x/L) in the coordinate frame recorded
+    immediately after RESET.  Tangent feed-forward sets the path heading and a
+    bounded look-ahead term corrects lateral drift from Nano's measured pose.
+    """
+    origin_heading_rad = math.radians(origin.heading_deg)
+    dx_mm = status.x_mm - origin.x_mm
+    dy_mm = status.y_mm - origin.y_mm
+    forward_mm = math.cos(origin_heading_rad) * dx_mm + math.sin(origin_heading_rad) * dy_mm
+    lateral_mm = -math.sin(origin_heading_rad) * dx_mm + math.cos(origin_heading_rad) * dy_mm
+    path_x_mm = clamp(forward_mm, 0.0, plan.length_mm)
+    phase = 2.0 * math.pi * plan.cycles * path_x_mm / plan.length_mm
+    desired_lateral_mm = plan.amplitude_mm * math.sin(phase)
+    desired_slope = plan.amplitude_mm * math.cos(phase) * 2.0 * math.pi * plan.cycles / plan.length_mm
+    tangent_deg = math.degrees(math.atan2(desired_slope, 1.0))
+    cross_track_deg = math.degrees(math.atan2(
+        desired_lateral_mm - lateral_mm, plan.cross_track_lookahead_mm,
+    ))
+    desired_heading_deg = origin.heading_deg + tangent_deg + clamp(cross_track_deg, -18.0, 18.0)
+    heading_error_deg = wrap_degrees(desired_heading_deg - status.heading_deg)
+    steering_pwm = clamp(
+        heading_error_deg * plan.heading_gain_pwm_per_deg,
+        -plan.max_steering_pwm,
+        plan.max_steering_pwm,
+    )
+    left_pwm = round(clamp(plan.cruise_pwm - steering_pwm, plan.min_pwm, plan.max_pwm))
+    right_pwm = round(clamp(plan.cruise_pwm + steering_pwm, plan.min_pwm, plan.max_pwm))
+    return WaveControl(
+        forward_mm=forward_mm,
+        lateral_mm=lateral_mm,
+        desired_lateral_mm=desired_lateral_mm,
+        desired_heading_deg=desired_heading_deg,
+        heading_error_deg=heading_error_deg,
+        left_pwm=left_pwm,
+        right_pwm=right_pwm,
+    )
+
+
 def require_confirmation(expected: str, message: str) -> None:
     entered = input(f"{message}\nType {expected} to continue: ").strip()
     if entered != expected:
@@ -359,6 +455,72 @@ def run_leader(link: NanoLink, status: RoverStatus, path: int, telemetry_ms: int
         publisher.close()
 
 
+def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str | None) -> None:
+    """Execute a Pi-planned, Nano-actuated wave using bounded MOTOR pulses.
+
+    This deliberately does not use Nano PATH.  The Pi owns the high-level
+    trajectory and sends only short expiry-protected PWM commands.  Nano stays
+    the sole serial owner and provides the measured pose and final motor stop.
+    """
+    validate_wave_plan(plan)
+    if not status.ready_for_path:
+        raise RuntimeError("Wave requires a successful commissioning session.")
+
+    # RESET starts the reference frame after calibration/preflight. It does not
+    # erase the Nano's gyro calibration or encoder-preflight latch.
+    print(link.request("RESET").raw)
+    origin = parse_status_fields(link.request("STATUS").fields)
+    if not origin.ready_for_path:
+        raise RuntimeError("RESET did not preserve a ready Nano state; refusing to move.")
+
+    require_confirmation(
+        "WAVE-3",
+        "Pi will command a 3 m, three-cycle +/-200 mm sine wave. "
+        "Clear at least a 3.5 m by 1.2 m lane and retain physical motor cutoff.",
+    )
+    publisher = LeaderPublisher(broadcast)
+    started_at = time.monotonic()
+    current = origin
+    try:
+        print(
+            "Wave started: Pi closed-loop tracker at "
+            f"{1.0 / plan.control_period_s:.1f} Hz; each MOTOR command expires in {plan.command_ms} ms."
+        )
+        while True:
+            if not current.ready_for_path:
+                raise RuntimeError("Nano preflight state became unsafe during wave run.")
+            if current.fault_code != 0:
+                raise RuntimeError(f"Nano reported fault_code={current.fault_code}")
+            if time.monotonic() - started_at > plan.max_runtime_s:
+                raise RuntimeError("Wave runtime limit reached; stopping.")
+
+            control = wave_control(current, origin, plan)
+            publisher.publish(current)
+            print(
+                "WAVE "
+                f"x={control.forward_mm:.0f} y={control.lateral_mm:.0f} "
+                f"target_y={control.desired_lateral_mm:.0f} "
+                f"heading_error={control.heading_error_deg:.1f} "
+                f"pwm=({control.left_pwm},{control.right_pwm})"
+            )
+            if control.forward_mm >= plan.length_mm:
+                link.stop_safely()
+                final = parse_status_fields(link.request("STATUS").fields)
+                publisher.publish(final)
+                print_status(final)
+                print("Wave completed. Nano is stopped.")
+                return
+
+            cycle_started_at = time.monotonic()
+            link.request("MOTOR", control.left_pwm, control.right_pwm, plan.command_ms, wait=0.7)
+            delay_s = plan.control_period_s - (time.monotonic() - cycle_started_at)
+            if delay_s > 0:
+                time.sleep(delay_s)
+            current = parse_status_fields(link.request("STATUS", wait=0.7).fields)
+    finally:
+        publisher.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Safe Leader-1 Nano USB and formation-reference controller.")
     parser.add_argument("--port", help="Nano /dev/serial/by-id path; auto-detects only when exactly one exists.")
@@ -391,6 +553,20 @@ def build_parser() -> argparse.ArgumentParser:
     leader.add_argument("--test-pwm", type=int, default=80, help="Pre-PATH encoder-test PWM, 1..165 (default 80).")
     leader.add_argument("--test-duration-ms", type=int, default=800, help="Pre-PATH encoder-test duration, 50..1200 ms (default 800).")
     leader.add_argument("--unlock", action="store_true")
+    wave = actions.add_parser(
+        "wave",
+        help="Pi-planned 3 m / three-cycle sine wave using short, expiry-protected MOTOR commands.",
+    )
+    wave.add_argument("--length-mm", type=float, default=3000.0)
+    wave.add_argument("--amplitude-mm", type=float, default=200.0)
+    wave.add_argument("--cycles", type=int, default=3)
+    wave.add_argument("--cruise-pwm", type=int, default=70)
+    wave.add_argument("--command-ms", type=int, default=320, help="Per-command Nano auto-stop timeout (default 320).")
+    wave.add_argument("--max-runtime-s", type=float, default=150.0)
+    wave.add_argument("--broadcast", help="Optional follower network destination, HOST:PORT (UDP).")
+    wave.add_argument("--test-pwm", type=int, default=80, help="Pre-wave encoder-test PWM, 1..165 (default 80).")
+    wave.add_argument("--test-duration-ms", type=int, default=800, help="Pre-wave encoder-test duration, 50..1200 ms (default 800).")
+    wave.add_argument("--unlock", action="store_true")
     return parser
 
 
@@ -468,6 +644,20 @@ def main() -> int:
                 )
             status = commission(link, args.test_pwm, args.test_duration_ms)
             run_leader(link, status, args.path, args.telemetry_ms, args.broadcast)
+        elif args.action == "wave":
+            if not args.unlock:
+                raise RuntimeError("Refusing Pi-side wave without --unlock.")
+            plan = WavePlan(
+                length_mm=args.length_mm,
+                amplitude_mm=args.amplitude_mm,
+                cycles=args.cycles,
+                cruise_pwm=args.cruise_pwm,
+                command_ms=args.command_ms,
+                max_runtime_s=args.max_runtime_s,
+            )
+            validate_wave_plan(plan)
+            status = commission(link, args.test_pwm, args.test_duration_ms)
+            run_wave(link, status, plan, args.broadcast)
         return 0
     except (RuntimeError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

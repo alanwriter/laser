@@ -2,7 +2,7 @@
 
 import unittest
 
-from leader_formation import NanoLink, parse_status_fields
+from leader_formation import NanoLink, WavePlan, parse_status_fields, wave_control
 
 
 STATUS = (
@@ -31,6 +31,29 @@ class LeaderProtocolTests(unittest.TestCase):
 
     def test_ignores_non_io_boot_text(self) -> None:
         self.assertIsNone(NanoLink.parse(b"Nano booting...\n"))
+
+    def test_wave_starts_with_three_cycle_sine_tangent(self) -> None:
+        origin = parse_status_fields(STATUS)
+        control = wave_control(origin, origin, WavePlan())
+        self.assertAlmostEqual(control.forward_mm, 0.0)
+        self.assertAlmostEqual(control.desired_lateral_mm, 0.0)
+        self.assertAlmostEqual(control.desired_heading_deg - origin.heading_deg, 51.49, places=1)
+        self.assertEqual((control.left_pwm, control.right_pwm), (30, 110))
+
+    def test_wave_reference_reaches_positive_amplitude_after_250_mm(self) -> None:
+        origin_fields = list(STATUS)
+        origin_fields[1] = "0.0"
+        origin_fields[2] = "0.0"
+        origin_fields[3] = "0.0"
+        origin = parse_status_fields(origin_fields)
+        fields = list(origin_fields)
+        fields[1] = "250.0"
+        fields[2] = "200.0"
+        point = parse_status_fields(fields)
+        control = wave_control(point, origin, WavePlan())
+        self.assertAlmostEqual(control.forward_mm, 250.0)
+        self.assertAlmostEqual(control.desired_lateral_mm, 200.0, places=3)
+        self.assertAlmostEqual(control.desired_heading_deg, origin.heading_deg, places=3)
 
 
 if __name__ == "__main__":

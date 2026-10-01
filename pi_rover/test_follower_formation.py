@@ -32,23 +32,52 @@ class FollowerFormationTests(unittest.TestCase):
         self.assertEqual(frame.status.mode, "velocity")
         self.assertEqual(frame.source_host, "192.168.1.166")
 
-    def test_follower_stays_on_directly_behind_target(self) -> None:
+    def test_follower_stays_at_the_left_rear_target(self) -> None:
         plan = FormationPlan()
         tracker = FormationTracker(plan)
         leader = LeaderFrame(status(), 1.0, "192.168.1.166")
         follower = status(mode="idle", x_mm=0.0, y_mm=0.0, heading_deg=0.0)
         control = tracker.control(leader, follower)
-        self.assertEqual((control.target_x_mm, control.target_y_mm), (-400.0, 0.0))
-        self.assertEqual((control.forward_error_mm, control.lateral_error_mm), (0.0, 0.0))
+        self.assertEqual((control.target_x_mm, control.target_y_mm), (-200.0, 200.0))
+        self.assertAlmostEqual(control.leader_distance_mm, 200.0 * 2 ** 0.5)
+        self.assertEqual((control.rho_mm, control.alpha_deg, control.beta_deg), (0.0, 0.0, 0.0))
         self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (0, 0))
+        self.assertTrue(control.tracking_safe)
 
-    def test_lateral_error_commands_a_corrective_turn(self) -> None:
+    def test_target_ahead_commands_forward_without_turn(self) -> None:
         tracker = FormationTracker(FormationPlan())
         leader = LeaderFrame(status(), 1.0, "192.168.1.166")
-        # F1 is 100 mm to the right of its desired behind-Leader location.
+        # F1 is 100 mm behind its left-rear virtual target.
+        follower = status(mode="idle", x_mm=-100.0, y_mm=0.0, heading_deg=0.0)
+        control = tracker.control(leader, follower)
+        self.assertEqual((control.rho_mm, control.alpha_deg, control.beta_deg), (100.0, 0.0, 0.0))
+        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (30, 30))
+
+    def test_large_bearing_error_blocks_tracking(self) -> None:
+        tracker = FormationTracker(FormationPlan())
+        leader = LeaderFrame(status(), 1.0, "192.168.1.166")
+        # F1 is 100 mm left of target, so the target is directly right (alpha=-90).
         follower = status(mode="idle", x_mm=0.0, y_mm=100.0, heading_deg=0.0)
         control = tracker.control(leader, follower)
-        self.assertLess(control.lateral_error_mm, 0.0)
+        self.assertLess(control.alpha_deg, -60.0)
+        self.assertFalse(control.tracking_safe)
+        self.assertEqual(control.stop_reason, "target bearing error is too large")
+
+    def test_target_motion_provides_feedforward_speed(self) -> None:
+        tracker = FormationTracker(FormationPlan())
+        follower = status(mode="idle", x_mm=0.0, y_mm=0.0, heading_deg=0.0)
+        tracker.control(LeaderFrame(status(x_mm=0.0), 1.0, "192.168.1.166"), follower)
+        control = tracker.control(LeaderFrame(status(x_mm=5.0), 1.1, "192.168.1.166"), follower)
+        self.assertAlmostEqual(control.target_speed_mm_per_second, 50.0)
+        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (45, 45))
+
+    def test_heading_correction_keeps_both_wheels_forward(self) -> None:
+        tracker = FormationTracker(FormationPlan())
+        follower = status(mode="idle", heading_deg=20.0)
+        tracker.control(LeaderFrame(status(x_mm=0.0), 1.0, "192.168.1.166"), follower)
+        control = tracker.control(LeaderFrame(status(x_mm=5.0), 1.1, "192.168.1.166"), follower)
+        self.assertGreaterEqual(control.left_mm_per_second, 0)
+        self.assertGreaterEqual(control.right_mm_per_second, 0)
         self.assertGreater(control.left_mm_per_second, control.right_mm_per_second)
 
     def test_only_safe_active_leader_can_move_follower(self) -> None:

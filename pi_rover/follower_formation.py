@@ -44,26 +44,33 @@ ACTIVE_LEADER_MODES = frozenset({"velocity", "path"})
 
 @dataclass(frozen=True)
 class FormationPlan:
-    """Rigid target pose and conservative local F1 tracking limits.
+    """Left-rear target pose and conservative polar-tracking limits.
 
     ``offset_*`` is expressed in the Leader body frame.  ``follower_start_*``
     maps F1's freshly RESET Nano frame into the same experiment frame as the
-    Leader.  For a follower placed 400 mm directly behind a Leader starting at
-    (0, 0, 0), use the defaults for both x values.
+    Leader.  The defaults mean 200 mm rearward (-x) and 200 mm leftward (+y):
+    F1 starts at Leader's left-rear 45-degree position, 282.8 mm away.
+
+    The outer loop is intentionally polar: rho is distance to the virtual
+    target, alpha is its bearing from F1's forward direction, and beta closes
+    the target heading.  The Nano remains the owner of wheel-speed PID/PWM.
     """
 
-    offset_x_mm: float = -400.0
-    offset_y_mm: float = 0.0
-    follower_start_x_mm: float = -400.0
-    follower_start_y_mm: float = 0.0
+    offset_x_mm: float = -200.0
+    offset_y_mm: float = 200.0
+    follower_start_x_mm: float = -200.0
+    follower_start_y_mm: float = 200.0
     follower_start_heading_deg: float = 0.0
-    position_gain_per_second: float = 0.8
-    lateral_gain_radians_per_second_per_radian: float = 2.0
-    heading_gain_radians_per_second_per_radian: float = 1.4
-    lateral_lookahead_mm: float = 220.0
-    max_wheel_mm_per_second: float = 75.0
-    max_yaw_rate_radians_per_second: float = 0.7
+    distance_gain_per_second: float = 0.30
+    bearing_gain_radians_per_second_per_radian: float = 1.20
+    terminal_gain_radians_per_second_per_radian: float = -0.45
+    max_wheel_mm_per_second: float = 45.0
+    max_yaw_rate_radians_per_second: float = 0.35
     wheel_track_mm: float = 130.0
+    max_target_error_mm: float = 250.0
+    max_bearing_error_deg: float = 60.0
+    min_leader_distance_mm: float = 180.0
+    max_leader_distance_mm: float = 500.0
     command_ms: int = 180
     control_period_s: float = 0.10
     frame_timeout_s: float = 0.35
@@ -81,11 +88,16 @@ class FormationControl:
     target_x_mm: float
     target_y_mm: float
     target_heading_deg: float
-    forward_error_mm: float
-    lateral_error_mm: float
-    heading_error_deg: float
+    target_speed_mm_per_second: float
+    target_yaw_rate_radians_per_second: float
+    leader_distance_mm: float
+    rho_mm: float
+    alpha_deg: float
+    beta_deg: float
     left_mm_per_second: int
     right_mm_per_second: int
+    tracking_safe: bool
+    stop_reason: str
 
 
 def parse_endpoint(text: str) -> tuple[str, int]:
@@ -157,11 +169,68 @@ class LeaderUdpReceiver:
 
 
 class FormationTracker:
-    """Pure pose controller; it neither opens USB nor communicates over UDP."""
+    """Pure polar controller; it neither opens USB nor communicates over UDP."""
 
     def __init__(self, plan: FormationPlan) -> None:
         self.plan = plan
         self._previous_target: tuple[float, float, float, float] | None = None
+
+    def _target_kinematics(
+        self,
+        target_x_mm: float,
+        target_y_mm: float,
+        fallback_heading_deg: float,
+        received_monotonic_s: float,
+    ) -> tuple[float, float, float]:
+        """Estimate the virtual target's forward speed, heading and yaw rate.
+
+        The target is offset from the Leader body, so its travel direction can
+        differ from Leader heading during a turn.  Differentiating the target
+        itself preserves the non-holonomic geometry better than assuming both
+        headings are always identical.
+        """
+        target_speed_mm_per_second = 0.0
+        target_heading_deg = fallback_heading_deg
+        target_yaw_rate_radians_per_second = 0.0
+        if self._previous_target:
+            old_x, old_y, old_heading_deg, old_time_s = self._previous_target
+            elapsed_s = received_monotonic_s - old_time_s
+            if 0.02 <= elapsed_s <= 1.0:
+                vx = (target_x_mm - old_x) / elapsed_s
+                vy = (target_y_mm - old_y) / elapsed_s
+                target_speed_mm_per_second = math.hypot(vx, vy)
+                if target_speed_mm_per_second >= 1.0:
+                    target_heading_deg = math.degrees(math.atan2(vy, vx))
+                    target_yaw_rate_radians_per_second = math.radians(
+                        wrap_degrees(target_heading_deg - old_heading_deg)
+                    ) / elapsed_s
+        self._previous_target = (
+            target_x_mm,
+            target_y_mm,
+            target_heading_deg,
+            received_monotonic_s,
+        )
+        return (
+            target_speed_mm_per_second,
+            target_heading_deg,
+            target_yaw_rate_radians_per_second,
+        )
+
+    def _follower_world_pose(self, follower: RoverStatus) -> tuple[float, float, float]:
+        """Map F1's RESET-local odometry into the Leader experiment frame."""
+        start_heading_rad = math.radians(self.plan.follower_start_heading_deg)
+        follower_x = (
+            self.plan.follower_start_x_mm
+            + math.cos(start_heading_rad) * follower.x_mm
+            - math.sin(start_heading_rad) * follower.y_mm
+        )
+        follower_y = (
+            self.plan.follower_start_y_mm
+            + math.sin(start_heading_rad) * follower.x_mm
+            + math.cos(start_heading_rad) * follower.y_mm
+        )
+        follower_heading_deg = self.plan.follower_start_heading_deg + follower.heading_deg
+        return follower_x, follower_y, follower_heading_deg
 
     def control(self, leader: LeaderFrame, follower: RoverStatus) -> FormationControl:
         leader_heading_rad = math.radians(leader.status.heading_deg)
@@ -175,77 +244,89 @@ class FormationTracker:
             + math.sin(leader_heading_rad) * self.plan.offset_x_mm
             + math.cos(leader_heading_rad) * self.plan.offset_y_mm
         )
-        target_heading = leader.status.heading_deg
+        target_speed, target_heading, target_yaw_rate = self._target_kinematics(
+            target_x,
+            target_y,
+            leader.status.heading_deg,
+            leader.received_monotonic_s,
+        )
 
-        # Feed forward the measured movement of the target pose.  This makes a
-        # correctly positioned F1 roll with the Leader rather than waiting for
-        # a large longitudinal error to accumulate.
-        forward_feedforward = 0.0
-        yaw_feedforward = 0.0
-        if self._previous_target:
-            old_x, old_y, old_heading, old_time = self._previous_target
-            elapsed = leader.received_monotonic_s - old_time
-            if 0.02 <= elapsed <= 1.0:
-                vx = (target_x - old_x) / elapsed
-                vy = (target_y - old_y) / elapsed
-                follower_heading_rad = math.radians(
-                    self.plan.follower_start_heading_deg + follower.heading_deg
-                )
-                forward_feedforward = (
-                    math.cos(follower_heading_rad) * vx
-                    + math.sin(follower_heading_rad) * vy
-                )
-                yaw_feedforward = math.radians(wrap_degrees(target_heading - old_heading)) / elapsed
-        self._previous_target = (target_x, target_y, target_heading, leader.received_monotonic_s)
-
-        follower_x = self.plan.follower_start_x_mm + follower.x_mm
-        follower_y = self.plan.follower_start_y_mm + follower.y_mm
-        follower_heading = self.plan.follower_start_heading_deg + follower.heading_deg
+        follower_x, follower_y, follower_heading = self._follower_world_pose(follower)
         follower_heading_rad = math.radians(follower_heading)
         world_error_x = target_x - follower_x
         world_error_y = target_y - follower_y
-        forward_error = (
-            math.cos(follower_heading_rad) * world_error_x
-            + math.sin(follower_heading_rad) * world_error_y
-        )
-        lateral_error = (
-            -math.sin(follower_heading_rad) * world_error_x
-            + math.cos(follower_heading_rad) * world_error_y
-        )
-        heading_error = wrap_degrees(target_heading - follower_heading)
+        rho_mm = math.hypot(world_error_x, world_error_y)
+        if rho_mm < 1.0:
+            bearing_deg = target_heading
+            alpha_deg = wrap_degrees(target_heading - follower_heading)
+            beta_deg = 0.0
+        else:
+            bearing_deg = math.degrees(math.atan2(world_error_y, world_error_x))
+            alpha_deg = wrap_degrees(bearing_deg - follower_heading)
+            beta_deg = wrap_degrees(target_heading - bearing_deg)
 
+        # The Leader's real separation is a collision/lost-formation monitor.
+        # rho instead is distance to the left-rear virtual target used by the
+        # polar controller.
+        leader_distance_mm = math.hypot(
+            leader.status.x_mm - follower_x,
+            leader.status.y_mm - follower_y,
+        )
+        tracking_safe = True
+        stop_reason = ""
+        if leader_distance_mm < self.plan.min_leader_distance_mm:
+            tracking_safe, stop_reason = False, "leader is too close"
+        elif leader_distance_mm > self.plan.max_leader_distance_mm:
+            tracking_safe, stop_reason = False, "leader separation is too large"
+        elif rho_mm > self.plan.max_target_error_mm:
+            tracking_safe, stop_reason = False, "virtual target error is too large"
+        elif abs(alpha_deg) > self.plan.max_bearing_error_deg:
+            tracking_safe, stop_reason = False, "target bearing error is too large"
+
+        # v* and omega* are target feed-forward; rho/alpha/beta close the
+        # local formation loop.  Translation never reverses in this initial
+        # controller.  Large bearing errors are blocked above rather than
+        # allowing a surprise pivot or blind reverse.
         forward_speed = clamp(
-            forward_feedforward + self.plan.position_gain_per_second * forward_error,
-            -self.plan.max_wheel_mm_per_second,
+            (target_speed + self.plan.distance_gain_per_second * rho_mm)
+            * math.cos(math.radians(alpha_deg)),
+            0.0,
             self.plan.max_wheel_mm_per_second,
         )
-        lateral_angle = math.atan2(lateral_error, self.plan.lateral_lookahead_mm)
         yaw_rate = clamp(
-            yaw_feedforward
-            + self.plan.lateral_gain_radians_per_second_per_radian * lateral_angle
-            + self.plan.heading_gain_radians_per_second_per_radian * math.radians(heading_error),
+            target_yaw_rate
+            + self.plan.bearing_gain_radians_per_second_per_radian * math.radians(alpha_deg)
+            + self.plan.terminal_gain_radians_per_second_per_radian * math.radians(beta_deg),
             -self.plan.max_yaw_rate_radians_per_second,
             self.plan.max_yaw_rate_radians_per_second,
         )
-        left = round(clamp(
-            forward_speed - self.plan.wheel_track_mm * yaw_rate / 2.0,
-            -self.plan.max_wheel_mm_per_second,
-            self.plan.max_wheel_mm_per_second,
-        ))
-        right = round(clamp(
-            forward_speed + self.plan.wheel_track_mm * yaw_rate / 2.0,
-            -self.plan.max_wheel_mm_per_second,
-            self.plan.max_wheel_mm_per_second,
-        ))
+        # First-stage formation tracking keeps both wheels non-negative. It
+        # therefore cannot pivot or reverse unexpectedly when a pose estimate
+        # is noisy; it steers progressively as forward target speed arrives.
+        forward_only_yaw_limit = 0.85 * 2.0 * forward_speed / self.plan.wheel_track_mm
+        yaw_rate = clamp(yaw_rate, -forward_only_yaw_limit, forward_only_yaw_limit)
+        raw_left = forward_speed - self.plan.wheel_track_mm * yaw_rate / 2.0
+        raw_right = forward_speed + self.plan.wheel_track_mm * yaw_rate / 2.0
+        # Scale both wheels together if a limit is reached. This preserves the
+        # requested curvature instead of clipping only one wheel.
+        scale = max(1.0, abs(raw_left) / self.plan.max_wheel_mm_per_second,
+                    abs(raw_right) / self.plan.max_wheel_mm_per_second)
+        left = round(raw_left / scale)
+        right = round(raw_right / scale)
         return FormationControl(
             target_x_mm=target_x,
             target_y_mm=target_y,
             target_heading_deg=target_heading,
-            forward_error_mm=forward_error,
-            lateral_error_mm=lateral_error,
-            heading_error_deg=heading_error,
+            target_speed_mm_per_second=target_speed,
+            target_yaw_rate_radians_per_second=target_yaw_rate,
+            leader_distance_mm=leader_distance_mm,
+            rho_mm=rho_mm,
+            alpha_deg=alpha_deg,
+            beta_deg=beta_deg,
             left_mm_per_second=left,
             right_mm_per_second=right,
+            tracking_safe=tracking_safe,
+            stop_reason=stop_reason,
         )
 
 
@@ -254,12 +335,18 @@ def validate_plan(plan: FormationPlan) -> None:
         plan.offset_x_mm, plan.offset_y_mm, plan.follower_start_x_mm, plan.follower_start_y_mm,
     )):
         raise RuntimeError("formation offsets/start coordinates must be within +/-2000 mm")
-    if not 0.0 < plan.lateral_lookahead_mm <= 1000.0:
-        raise RuntimeError("lateral lookahead must be 0..1000 mm")
+    if not 0.0 < plan.distance_gain_per_second <= 2.0:
+        raise RuntimeError("distance gain must be 0..2 per second")
     if not 0.0 < plan.max_wheel_mm_per_second <= 100.0:
         raise RuntimeError("max wheel speed must be 0..100 mm/s")
-    if plan.wheel_track_mm <= 0.0:
+    if plan.wheel_track_mm <= 0.0 or plan.max_yaw_rate_radians_per_second <= 0.0:
         raise RuntimeError("wheel track must be positive")
+    if not 0.0 < plan.max_target_error_mm <= 1000.0:
+        raise RuntimeError("maximum target error must be 0..1000 mm")
+    if not 0.0 < plan.max_bearing_error_deg <= 90.0:
+        raise RuntimeError("maximum bearing error must be 0..90 degrees")
+    if not 0.0 < plan.min_leader_distance_mm < plan.max_leader_distance_mm:
+        raise RuntimeError("leader distance limits must be positive and ordered")
     if not MIN_MOTOR_MS <= plan.command_ms <= MAX_MOTOR_MS:
         raise RuntimeError(f"command timeout must be {MIN_MOTOR_MS}..{MAX_MOTOR_MS} ms")
     if not 0.0 < plan.control_period_s < plan.command_ms / 1000.0:
@@ -293,15 +380,24 @@ def run_follow(
     )
     tracker = FormationTracker(plan)
     latest: LeaderFrame | None = None
+    consecutive_active_frames = 0
     stopped_for_wait = True
-    print("F1 armed and listening. It remains stopped until a fresh, safe moving Leader packet arrives.")
+    print("F1 armed and listening. It remains stopped until three fresh, safe moving Leader packets arrive.")
     try:
         while True:
             frame = receiver.receive_latest(plan.control_period_s)
             if frame:
                 latest = frame
+                consecutive_active_frames = (
+                    consecutive_active_frames + 1 if leader_is_safe_and_moving(frame) else 0
+                )
             stale = not latest or time.monotonic() - latest.received_monotonic_s > plan.frame_timeout_s
-            if stale or not latest or not leader_is_safe_and_moving(latest):
+            if (
+                stale
+                or not latest
+                or not leader_is_safe_and_moving(latest)
+                or consecutive_active_frames < 3
+            ):
                 if not stopped_for_wait:
                     link.stop_safely()
                     stopped_for_wait = True
@@ -312,6 +408,8 @@ def run_follow(
             if not follower.ready_for_path:
                 raise RuntimeError("F1 Nano preflight became unsafe; stopping.")
             control = tracker.control(latest, follower)
+            if not control.tracking_safe:
+                raise RuntimeError(f"F1 formation safety gate: {control.stop_reason}.")
             link.request(
                 "VELOCITY",
                 control.left_mm_per_second,
@@ -336,12 +434,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--listen", default="0.0.0.0:5005", help="local UDP bind endpoint (default 0.0.0.0:5005)")
     parser.add_argument("--leader-host", required=True, help="required source IPv4 address of the Leader Pi")
     parser.add_argument("--multicast-group", help="join this IPv4 multicast group, e.g. 239.42.0.1")
-    parser.add_argument("--offset-x-mm", type=float, default=-400.0, help="F1 target x in Leader body frame (default -400)")
-    parser.add_argument("--offset-y-mm", type=float, default=0.0, help="F1 target y in Leader body frame (default 0)")
-    parser.add_argument("--follower-start-x-mm", type=float, default=-400.0, help="F1 Nano RESET origin in experiment frame")
-    parser.add_argument("--follower-start-y-mm", type=float, default=0.0, help="F1 Nano RESET origin in experiment frame")
+    parser.add_argument("--offset-x-mm", type=float, default=-200.0, help="F1 target x in Leader body frame (default -200, rear)")
+    parser.add_argument("--offset-y-mm", type=float, default=200.0, help="F1 target y in Leader body frame (default +200, left)")
+    parser.add_argument("--follower-start-x-mm", type=float, default=-200.0, help="F1 Nano RESET origin in experiment frame")
+    parser.add_argument("--follower-start-y-mm", type=float, default=200.0, help="F1 Nano RESET origin in experiment frame")
     parser.add_argument("--follower-start-heading-deg", type=float, default=0.0, help="F1 initial heading relative to Leader frame")
-    parser.add_argument("--max-speed-mm-s", type=float, default=75.0)
+    parser.add_argument("--max-speed-mm-s", type=float, default=45.0)
     parser.add_argument("--command-ms", type=int, default=180)
     parser.add_argument("--frame-timeout-s", type=float, default=0.35)
     parser.add_argument("--test-pwm", type=int, default=80)

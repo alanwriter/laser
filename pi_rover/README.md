@@ -205,9 +205,10 @@ locally reset odometry frame into the shared experiment frame, then sends
 short `VELOCITY` targets to F1's calibrated Nano controller.
 
 For the first test, align both cars with the same heading and place F1 exactly
-400 mm directly behind Leader. The default F1 target and origin are both
-`(-400 mm, 0 mm)` in the Leader's initial frame. Keep a clear 3.5 m by 1.2 m
-lane, physical motor-power cutoffs, and two SSH terminals.
+200 mm rearward and 200 mm to Leader's left. The default F1 target and origin
+are both `(-200 mm, +200 mm)` in the Leader's initial frame: a left-rear,
+45-degree formation with 282.8 mm Leader-to-F1 separation. Keep a clear 3.5 m
+by 1.2 m lane, physical motor-power cutoffs, and two SSH terminals.
 
 ```bash
 # F1 terminal: this performs the explicit stationary calibration and lifted
@@ -221,19 +222,27 @@ python3 follower_formation.py \
   --multicast-group 239.42.0.1 \
   --unlock
 
-# Leader terminal: use the same multicast destination. This stays local to
-# the current LAN (TTL=1) and publishes at the existing 10 Hz wave rate.
+# Leader terminal: use the same multicast destination. The first formation
+# trial is deliberately a slow, shallow single wave; do not begin with the
+# 3 m / three-cycle route.
 cd ~/pi_rover
 python3 leader_formation.py \
   --port /dev/serial/by-id/<Leader-Nano裝置名稱> \
-  wave --unlock --speed-mm-s 55 --broadcast 239.42.0.1:5005
+  wave --unlock --length-mm 1000 --amplitude-mm 50 --cycles 1 \
+  --speed-mm-s 25 --broadcast 239.42.0.1:5005
 ```
 
 Type `FOLLOWER-1` only after F1 is placed at its start position, then type
-`WAVE-3` on Leader. F1 begins only when it receives a fresh Leader frame whose
-IMU/encoder/fault checks pass and whose mode is `velocity` or `path`. A packet
-older than 0.35 s, a stopped/faulted Leader, F1 fault, serial loss, Ctrl-C, or
-normal process exit sends F1 `STOP`.
+`WAVE-3` on Leader. F1 begins only after three fresh Leader frames whose
+IMU/encoder/fault checks pass and whose mode is `velocity` or `path`.
+
+F1 uses a polar outer loop to the left-rear virtual target: `rho` is target
+distance, `alpha` is target bearing from F1's forward direction, and `beta`
+closes target heading. The first run limits F1 to 45 mm/s and does not reverse
+or pivot on its own. A packet older than 0.35 s, stopped/faulted Leader, F1
+fault, serial loss, Ctrl-C, normal process exit, Leader distance below 180 mm
+or above 500 mm, target error above 250 mm, or bearing error above 60 degrees
+sends F1 `STOP` and requires a new arm.
 
 Changing laboratories or switching to the vehicles' own Wi-Fi needs no code
 change: join all Pi devices to that same local network, then replace only

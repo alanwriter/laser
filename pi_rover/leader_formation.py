@@ -373,7 +373,15 @@ def main() -> int:
             link.stop_safely()
             require_confirmation("CALIBRATE", "Keep the rover still for roughly 1.5 seconds.")
             print(link.request("CALIBRATE", wait=3.0).raw)
-            print_status(preflight_or_raise(link))
+            status = link.startup_check()
+            print_status(status)
+            if not status.imu_present or not status.imu_calibrated:
+                raise RuntimeError("Gyro calibration did not complete; PATH remains blocked.")
+            if not status.ready_for_path:
+                print(
+                    "Gyro calibration succeeded. PATH remains blocked until encoder preflight passes.",
+                    file=sys.stderr,
+                )
         elif args.action == "motor":
             if not args.unlock:
                 raise RuntimeError("Refusing MOTOR without --unlock.")

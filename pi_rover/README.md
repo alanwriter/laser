@@ -106,8 +106,9 @@ y = 200 × sin(6πx / 3000),  x = 0…3000 mm
 ```bash
 # It calibrates and checks encoders in this same USB session, asks for
 # CALIBRATE, MOTOR, and WAVE-3 confirmations, then sends 180 ms wheel-speed
-# setpoints to the Nano's existing controller.
-python3 leader_formation.py --port <PORT> wave --unlock
+# setpoints to the Nano's existing controller. This next-step tuning raises
+# nominal speed from 45 to 55 mm/s.
+python3 leader_formation.py --port <PORT> wave --unlock --speed-mm-s 55
 ```
 
 The initial tuning is deliberately conservative (45 mm/s, 10 Hz Pi replanning,
@@ -115,10 +116,18 @@ The initial tuning is deliberately conservative (45 mm/s, 10 Hz Pi replanning,
 loss, bad status, fault, finish-corridor overrun, or the 180 s deadline causes
 a best-effort `STOP`.
 
+Every wave run writes a flush-on-every-row CSV under `~/pi_rover/logs/`, for
+example `wave_20261001T095440Z.csv`. It records the planned wave parameters,
+Nano pose/encoder/tps/PWM/fault fields, Pi path errors, and commanded left and
+right wheel speeds. Pass `--log /path/to/run.csv` to choose a specific file.
+This is the file to retain and share for tuning discussion; terminal output is
+only a live monitor.
+
 It is normal for this mathematical sine wave to start and finish with a
 non-zero tangent (about 51.5°): it returns to the original lateral line but
 does not promise the original final heading. The terminal prints measured
-`x`, `y`, target `y`, heading error, and each PWM command for tuning.
+`x`, `y`, target `y`, heading error, and each wheel-speed setpoint for live
+monitoring.
 
 Use `--broadcast HOST:PORT` to publish the measured leader pose while it runs,
 for example `--broadcast 239.42.0.1:5005`.

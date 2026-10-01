@@ -1,8 +1,16 @@
 """Protocol-only tests; they do not open a serial port or command motors."""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from leader_formation import NanoLink, WavePlan, parse_status_fields, wave_control
+from leader_formation import (
+    NanoLink,
+    WaveCsvLogger,
+    WavePlan,
+    parse_status_fields,
+    wave_control,
+)
 
 
 STATUS = (
@@ -55,6 +63,19 @@ class LeaderProtocolTests(unittest.TestCase):
         self.assertAlmostEqual(control.desired_lateral_mm, 200.0, places=3)
         self.assertAlmostEqual(control.desired_heading_deg, origin.heading_deg, places=3)
         self.assertGreater(control.left_mm_per_second, control.right_mm_per_second)
+
+    def test_wave_csv_log_records_status_and_control(self) -> None:
+        status = parse_status_fields(STATUS)
+        control = wave_control(status, status, WavePlan())
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "wave.csv"
+            logger = WaveCsvLogger(path, WavePlan())
+            logger.record("control", status, 1.25, control)
+            logger.close()
+            contents = path.read_text(encoding="utf-8")
+        self.assertIn("control_heading_error_deg", contents)
+        self.assertIn("control", contents)
+        self.assertIn(",1.25,", contents)
 
 
 if __name__ == "__main__":

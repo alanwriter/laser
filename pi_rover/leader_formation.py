@@ -3,8 +3,8 @@
 
 The Nano remains the only process that drives motors and owns its safety timeout.
 This Pi program never moves the rover on launch. In ``leader`` mode it starts a
-firmware PATH; in ``wave`` mode the Pi plans a trajectory and sends only short,
-expiry-protected MOTOR commands from the Nano's measured pose.
+firmware PATH; in ``wave`` mode the Pi plans a trajectory, logs the run to CSV,
+and sends expiry-protected VELOCITY setpoints from the Nano's measured pose.
 """
 
 from __future__ import annotations
@@ -103,6 +103,65 @@ class RoverStatus:
             and self.encoder_preflight == 1
             and self.fault_code == 0
         )
+
+
+WAVE_LOG_STATUS_COLUMNS = tuple(RoverStatus.__dataclass_fields__)
+WAVE_LOG_CONTROL_COLUMNS = tuple(WaveControl.__dataclass_fields__)
+WAVE_LOG_FIELDS = (
+    "event",
+    "wall_time_utc",
+    "monotonic_s",
+    "elapsed_s",
+    "plan_length_mm",
+    "plan_amplitude_mm",
+    "plan_cycles",
+    "plan_cruise_mm_per_second",
+    *(f"status_{name}" for name in WAVE_LOG_STATUS_COLUMNS),
+    *(f"control_{name}" for name in WAVE_LOG_CONTROL_COLUMNS),
+)
+
+
+class WaveCsvLogger:
+    """Flush a discussion-ready CSV row after every Pi wave-control update."""
+
+    def __init__(self, path: Path, plan: WavePlan) -> None:
+        self.path = path.expanduser().resolve()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.file = self.path.open("w", encoding="utf-8", newline="")
+        self.writer = csv.DictWriter(self.file, fieldnames=WAVE_LOG_FIELDS)
+        self.writer.writeheader()
+        self.plan = plan
+
+    def record(
+        self,
+        event: str,
+        status: RoverStatus,
+        elapsed_s: float,
+        control: WaveControl | None = None,
+    ) -> None:
+        row: dict[str, object] = {
+            "event": event,
+            "wall_time_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "monotonic_s": round(time.monotonic(), 6),
+            "elapsed_s": round(elapsed_s, 6),
+            "plan_length_mm": self.plan.length_mm,
+            "plan_amplitude_mm": self.plan.amplitude_mm,
+            "plan_cycles": self.plan.cycles,
+            "plan_cruise_mm_per_second": self.plan.cruise_mm_per_second,
+        }
+        row.update({f"status_{name}": value for name, value in asdict(status).items()})
+        if control:
+            row.update({f"control_{name}": value for name, value in asdict(control).items()})
+        self.writer.writerow(row)
+        self.file.flush()
+
+    def close(self) -> None:
+        self.file.close()
+
+
+def default_wave_log_path() -> Path:
+    timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    return Path(__file__).resolve().parent / "logs" / f"wave_{timestamp}.csv"
 
 
 class ProtocolError(RuntimeError):
@@ -491,7 +550,13 @@ def run_leader(link: NanoLink, status: RoverStatus, path: int, telemetry_ms: int
         publisher.close()
 
 
-def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str | None) -> None:
+def run_wave(
+    link: NanoLink,
+    status: RoverStatus,
+    plan: WavePlan,
+    broadcast: str | None,
+    log_path: Path | None,
+) -> None:
     """Execute a Pi-planned, Nano-actuated wave using VELOCITY setpoints.
 
     This deliberately does not use Nano PATH. The Pi owns the high-level
@@ -517,6 +582,8 @@ def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str
     publisher = LeaderPublisher(broadcast)
     started_at = time.monotonic()
     current = origin
+    logger = WaveCsvLogger(log_path or default_wave_log_path(), plan)
+    logger.record("origin", origin, 0.0)
     try:
         print(
             "Wave started: Pi path tracker at "
@@ -533,6 +600,7 @@ def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str
 
             control = wave_control(current, origin, plan)
             publisher.publish(current)
+            logger.record("control", current, time.monotonic() - started_at, control)
             print(
                 "WAVE "
                 f"x={control.forward_mm:.0f} y={control.lateral_mm:.0f} "
@@ -548,6 +616,7 @@ def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str
                 link.stop_safely()
                 final = parse_status_fields(link.request("STATUS").fields)
                 publisher.publish(final)
+                logger.record("completed", final, time.monotonic() - started_at, control)
                 print_status(final)
                 print("Wave completed. Nano is stopped.")
                 return
@@ -568,6 +637,8 @@ def run_wave(link: NanoLink, status: RoverStatus, plan: WavePlan, broadcast: str
             current = parse_status_fields(link.request("STATUS", wait=0.7).fields)
     finally:
         publisher.close()
+        logger.close()
+        print(f"Wave CSV log: {logger.path}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -612,6 +683,11 @@ def build_parser() -> argparse.ArgumentParser:
     wave.add_argument("--speed-mm-s", type=float, default=45.0, help="Nominal chassis speed (default 45 mm/s).")
     wave.add_argument("--command-ms", type=int, default=180, help="Per-command Nano auto-stop timeout (default 180).")
     wave.add_argument("--max-runtime-s", type=float, default=180.0)
+    wave.add_argument(
+        "--log",
+        type=Path,
+        help="CSV destination; default is ~/pi_rover/logs/wave_<UTC timestamp>.csv",
+    )
     wave.add_argument("--broadcast", help="Optional follower network destination, HOST:PORT (UDP).")
     wave.add_argument("--test-pwm", type=int, default=80, help="Pre-wave encoder-test PWM, 1..165 (default 80).")
     wave.add_argument("--test-duration-ms", type=int, default=800, help="Pre-wave encoder-test duration, 50..1200 ms (default 800).")
@@ -706,7 +782,7 @@ def main() -> int:
             )
             validate_wave_plan(plan)
             status = commission(link, args.test_pwm, args.test_duration_ms)
-            run_wave(link, status, plan, args.broadcast)
+            run_wave(link, status, plan, args.broadcast, args.log)
         return 0
     except (RuntimeError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

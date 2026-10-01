@@ -67,10 +67,13 @@ class FormationPlan:
     max_wheel_mm_per_second: float = 45.0
     max_yaw_rate_radians_per_second: float = 0.35
     wheel_track_mm: float = 130.0
-    max_target_error_mm: float = 250.0
-    max_bearing_error_deg: float = 60.0
-    min_leader_distance_mm: float = 180.0
-    max_leader_distance_mm: float = 750.0
+    # Collision is the hard physical-stop condition for this supervised trial.
+    # Pose/bearing errors use the low-speed reacquisition behaviour below.
+    collision_stop_distance_mm: float = 150.0
+    max_target_error_mm: float = 800.0
+    max_leader_distance_mm: float = 1200.0
+    reacquire_bearing_deg: float = 45.0
+    reacquire_speed_mm_per_second: float = 12.0
     command_ms: int = 180
     control_period_s: float = 0.10
     frame_timeout_s: float = 0.35
@@ -274,25 +277,32 @@ class FormationTracker:
         )
         tracking_safe = True
         stop_reason = ""
-        if leader_distance_mm < self.plan.min_leader_distance_mm:
+        if leader_distance_mm < self.plan.collision_stop_distance_mm:
             tracking_safe, stop_reason = False, "leader is too close"
         elif leader_distance_mm > self.plan.max_leader_distance_mm:
             tracking_safe, stop_reason = False, "leader separation is too large"
         elif rho_mm > self.plan.max_target_error_mm:
             tracking_safe, stop_reason = False, "virtual target error is too large"
-        elif abs(alpha_deg) > self.plan.max_bearing_error_deg:
-            tracking_safe, stop_reason = False, "target bearing error is too large"
 
         # v* and omega* are target feed-forward; rho/alpha/beta close the
         # local formation loop.  Translation never reverses in this initial
         # controller.  Large bearing errors are blocked above rather than
         # allowing a surprise pivot or blind reverse.
+        desired_forward_speed = target_speed + self.plan.distance_gain_per_second * rho_mm
         forward_speed = clamp(
-            (target_speed + self.plan.distance_gain_per_second * rho_mm)
-            * math.cos(math.radians(alpha_deg)),
+            desired_forward_speed * max(0.0, math.cos(math.radians(alpha_deg))),
             0.0,
             self.plan.max_wheel_mm_per_second,
         )
+        if abs(alpha_deg) > self.plan.reacquire_bearing_deg:
+            # A virtual target can move briefly to the side/rear while Leader
+            # enters a curve. Do not treat that ordinary geometry as a fault:
+            # crawl forward with a bounded-radius turn until it comes back into
+            # F1's forward field. The Nano receives no reverse or pivot command.
+            forward_speed = min(
+                self.plan.reacquire_speed_mm_per_second,
+                desired_forward_speed,
+            )
         yaw_rate = clamp(
             target_yaw_rate
             + self.plan.bearing_gain_radians_per_second_per_radian * math.radians(alpha_deg)
@@ -341,12 +351,14 @@ def validate_plan(plan: FormationPlan) -> None:
         raise RuntimeError("max wheel speed must be 0..100 mm/s")
     if plan.wheel_track_mm <= 0.0 or plan.max_yaw_rate_radians_per_second <= 0.0:
         raise RuntimeError("wheel track must be positive")
-    if not 0.0 < plan.max_target_error_mm <= 1000.0:
-        raise RuntimeError("maximum target error must be 0..1000 mm")
-    if not 0.0 < plan.max_bearing_error_deg <= 90.0:
-        raise RuntimeError("maximum bearing error must be 0..90 degrees")
-    if not 0.0 < plan.min_leader_distance_mm < plan.max_leader_distance_mm:
+    if not 0.0 < plan.max_target_error_mm <= 2000.0:
+        raise RuntimeError("maximum target error must be 0..2000 mm")
+    if not 0.0 < plan.collision_stop_distance_mm < plan.max_leader_distance_mm:
         raise RuntimeError("leader distance limits must be positive and ordered")
+    if not 0.0 < plan.reacquire_bearing_deg < 180.0:
+        raise RuntimeError("reacquire bearing must be between 0 and 180 degrees")
+    if not 0.0 < plan.reacquire_speed_mm_per_second <= plan.max_wheel_mm_per_second:
+        raise RuntimeError("reacquire speed must be positive and within the wheel-speed limit")
     if not MIN_MOTOR_MS <= plan.command_ms <= MAX_MOTOR_MS:
         raise RuntimeError(f"command timeout must be {MIN_MOTOR_MS}..{MAX_MOTOR_MS} ms")
     if not 0.0 < plan.control_period_s < plan.command_ms / 1000.0:

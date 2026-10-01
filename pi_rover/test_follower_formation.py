@@ -53,15 +53,26 @@ class FollowerFormationTests(unittest.TestCase):
         self.assertEqual((control.rho_mm, control.alpha_deg, control.beta_deg), (100.0, 0.0, 0.0))
         self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (30, 30))
 
-    def test_large_bearing_error_blocks_tracking(self) -> None:
+    def test_large_bearing_error_reacquires_at_low_speed_without_reverse(self) -> None:
         tracker = FormationTracker(FormationPlan())
         leader = LeaderFrame(status(), 1.0, "192.168.1.166")
         # F1 is 100 mm left of target, so the target is directly right (alpha=-90).
         follower = status(mode="idle", x_mm=0.0, y_mm=100.0, heading_deg=0.0)
         control = tracker.control(leader, follower)
         self.assertLess(control.alpha_deg, -60.0)
+        self.assertTrue(control.tracking_safe)
+        self.assertEqual(control.stop_reason, "")
+        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (22, 2))
+
+    def test_only_150_mm_collision_distance_hard_stops_tracking(self) -> None:
+        tracker = FormationTracker(FormationPlan())
+        leader = LeaderFrame(status(), 1.0, "192.168.1.166")
+        # F1 is 140 mm directly behind Leader in the shared experiment frame.
+        follower = status(mode="idle", x_mm=260.0, y_mm=-400.0, heading_deg=0.0)
+        control = tracker.control(leader, follower)
+        self.assertLess(control.leader_distance_mm, 150.0)
         self.assertFalse(control.tracking_safe)
-        self.assertEqual(control.stop_reason, "target bearing error is too large")
+        self.assertEqual(control.stop_reason, "leader is too close")
 
     def test_target_motion_provides_feedforward_speed(self) -> None:
         tracker = FormationTracker(FormationPlan())

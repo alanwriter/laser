@@ -241,10 +241,11 @@ IMU/encoder/fault checks pass and whose mode is `velocity` or `path`.
 F1 uses a polar outer loop to the left-rear virtual target: `rho` is target
 distance, `alpha` is target bearing from F1's forward direction, and `beta`
 closes target heading. The first run limits F1 to 45 mm/s and does not reverse
-or pivot on its own. A packet older than 0.35 s, stopped/faulted Leader, F1
-fault, serial loss, Ctrl-C, normal process exit, Leader distance below 180 mm
-or above 750 mm, target error above 250 mm, or bearing error above 60 degrees
-sends F1 `STOP` and requires a new arm.
+or pivot on its own. A large bearing error instead uses a bounded 12 mm/s
+forward reacquisition arc. A packet older than 0.35 s, stopped/faulted Leader,
+F1 fault, serial loss, Ctrl-C, normal process exit, Leader distance below
+150 mm or above 1200 mm, or target error above 800 mm sends F1 `STOP` and
+requires a new arm.
 
 Changing laboratories or switching to the vehicles' own Wi-Fi needs no code
 change: join all Pi devices to that same local network, then replace only

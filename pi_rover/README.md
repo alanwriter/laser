@@ -71,6 +71,23 @@ python3 leader_formation.py --port <PORT> motor 80 80 500 --unlock
 `motor` requires `--unlock` and a typed `MOTOR` confirmation. Pi boot never
 sends `MOTOR` or `PATH`.
 
+## Full-vehicle commissioning
+
+Opening a Nano USB serial port resets the Nano, including its volatile gyro
+calibration and encoder counts. Therefore do **not** calibrate in one command,
+test wheels in another, then expect a third command to retain that state.
+Use one commissioning session instead:
+
+```bash
+# Keep the car still for calibration, then lift both wheels before MOTOR.
+python3 leader_formation.py --port <PORT> commission --unlock
+```
+
+It requires typing `CALIBRATE`, then `MOTOR`; it sends equal PWM `80` for
+`800 ms`, stops, reads both encoder A/B phases, and reports `COMMISSION
+PASSED` only when `imu_present=1`, `imu_calibrated=1`,
+`encoder_preflight=1`, and `fault_code=0` coexist in the same USB session.
+
 ## Leader part of the formation algorithm
 
 The Leader does not try to steer every follower. Its job is to execute a safe
@@ -86,8 +103,9 @@ Follower reference generator
 each follower's local safety checks and motor controller
 ```
 
-Start a leader path only after the preflight checks, explicit `--unlock`, and a
-typed confirmation:
+Start a leader path only after the preflight checks, explicit `--unlock`, and
+typed confirmations. The command commissions the car in the same USB session
+before it issues `PATH`, so opening the port cannot erase the required state:
 
 ```bash
 # PATH 1 is 500 mm straight; PATH 2 is 700 mm square.

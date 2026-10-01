@@ -271,10 +271,60 @@ def preflight_or_raise(link: NanoLink) -> RoverStatus:
     return status
 
 
-def run_leader(link: NanoLink, path: int, telemetry_ms: int, broadcast: str | None) -> None:
+def validate_motor_test(pwm: int, duration_ms: int) -> None:
+    if not 1 <= abs(pwm) <= MAX_PWM:
+        raise RuntimeError(f"Test PWM magnitude must be 1..{MAX_PWM}.")
+    if not MIN_MOTOR_MS <= duration_ms <= MAX_MOTOR_MS:
+        raise RuntimeError(f"Test duration must be {MIN_MOTOR_MS}..{MAX_MOTOR_MS} ms.")
+
+
+def commission(link: NanoLink, pwm: int, duration_ms: int) -> RoverStatus:
+    """Calibrate and prove both encoder phases in one USB-open session.
+
+    Opening the Nano USB serial device resets its volatile calibration and
+    encoder state.  This deliberately keeps CALIBRATE, RESET, MOTOR, and the
+    final STATUS in one session so a successful result is meaningful.
+    """
+    validate_motor_test(pwm, duration_ms)
+    initial = link.startup_check()
+    print_status(initial)
+    if not initial.imu_present:
+        raise RuntimeError("MPU6050 is not detected; check I2C wiring before calibration.")
+
+    require_confirmation("CALIBRATE", "Keep the rover completely still for the 1.5 s gyro calibration.")
+    print(link.request("CALIBRATE", wait=3.0).raw)
+    calibrated = parse_status_fields(link.request("STATUS").fields)
+    print_status(calibrated)
+    if not calibrated.imu_calibrated:
+        raise RuntimeError("Gyro calibration did not complete.")
+
+    # Start the A/B phase test with fresh counts while retaining gyro bias.
+    print(link.request("RESET").raw)
+    require_confirmation(
+        "MOTOR",
+        f"Lift both wheels clear. Test both motors at PWM {pwm} for {duration_ms} ms.",
+    )
+    print(link.request("MOTOR", pwm, pwm, duration_ms).raw)
+    time.sleep(duration_ms / 1000.0 + 0.15)
+    link.stop_safely()
+    print(link.request("ENCODER").raw)
+    result = parse_status_fields(link.request("STATUS").fields)
+    print_status(result)
+    if not result.encoder_preflight:
+        raise RuntimeError(
+            "Encoder preflight did not pass. Check both wheel motors and A/B encoder phases."
+        )
+    if not result.ready_for_path:
+        raise RuntimeError("Commissioning did not produce a PATH-ready status.")
+    print("COMMISSION PASSED: IMU and both encoder phases are ready for PATH.")
+    return result
+
+
+def run_leader(link: NanoLink, status: RoverStatus, path: int, telemetry_ms: int, broadcast: str | None) -> None:
     if path not in {1, 2}:
         raise RuntimeError("Leader firmware permits PATH 1 or 2 only.")
-    status = preflight_or_raise(link)
+    if not status.ready_for_path:
+        raise RuntimeError("Leader PATH requires a successful commissioning session.")
     require_confirmation(
         f"LEADER-PATH-{path}",
         f"Leader will run PATH {path}. Clear the route and retain physical motor-power cutoff.",
@@ -327,10 +377,19 @@ def build_parser() -> argparse.ArgumentParser:
     motor.add_argument("right_pwm", type=int)
     motor.add_argument("duration_ms", type=int)
     motor.add_argument("--unlock", action="store_true")
+    commission_parser = actions.add_parser(
+        "commission",
+        help="One USB session: calibrate gyro, test both motors/encoder phases, then report PATH readiness.",
+    )
+    commission_parser.add_argument("--pwm", type=int, default=80)
+    commission_parser.add_argument("--duration-ms", type=int, default=800)
+    commission_parser.add_argument("--unlock", action="store_true")
     leader = actions.add_parser("leader", help="Run PATH 1/2 and publish measured leader poses for followers.")
     leader.add_argument("path", type=int, choices=(1, 2))
     leader.add_argument("--telemetry-ms", type=int, default=500, help="Nano status interval, 100..2000 ms (default 500).")
     leader.add_argument("--broadcast", help="Optional follower network destination, HOST:PORT (UDP).")
+    leader.add_argument("--test-pwm", type=int, default=80, help="Pre-PATH encoder-test PWM, 1..165 (default 80).")
+    leader.add_argument("--test-duration-ms", type=int, default=800, help="Pre-PATH encoder-test duration, 50..1200 ms (default 800).")
     leader.add_argument("--unlock", action="store_true")
     return parser
 
@@ -392,6 +451,14 @@ def main() -> int:
             link.stop_safely()
             require_confirmation("MOTOR", "Clear the rover and keep physical motor cutoff ready.")
             print(link.request("MOTOR", args.left_pwm, args.right_pwm, args.duration_ms).raw)
+            time.sleep(args.duration_ms / 1000.0 + 0.15)
+            link.stop_safely()
+            print(link.request("ENCODER").raw)
+            print_status(parse_status_fields(link.request("STATUS").fields))
+        elif args.action == "commission":
+            if not args.unlock:
+                raise RuntimeError("Refusing commissioning motor test without --unlock.")
+            commission(link, args.pwm, args.duration_ms)
         elif args.action == "leader":
             if not args.unlock:
                 raise RuntimeError("Refusing leader PATH without --unlock.")
@@ -399,7 +466,8 @@ def main() -> int:
                 raise RuntimeError(
                     f"--telemetry-ms must be {MIN_TELEMETRY_MS}..{MAX_TELEMETRY_MS}."
                 )
-            run_leader(link, args.path, args.telemetry_ms, args.broadcast)
+            status = commission(link, args.test_pwm, args.test_duration_ms)
+            run_leader(link, status, args.path, args.telemetry_ms, args.broadcast)
         return 0
     except (RuntimeError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

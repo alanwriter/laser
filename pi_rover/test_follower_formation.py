@@ -51,7 +51,7 @@ class FollowerFormationTests(unittest.TestCase):
         follower = status(mode="idle", x_mm=-100.0, y_mm=0.0, heading_deg=0.0)
         control = tracker.control(leader, follower)
         self.assertEqual((control.rho_mm, control.alpha_deg, control.beta_deg), (100.0, 0.0, 0.0))
-        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (30, 30))
+        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (38, 38))
 
     def test_large_bearing_error_reacquires_at_low_speed_without_reverse(self) -> None:
         tracker = FormationTracker(FormationPlan())
@@ -80,13 +80,27 @@ class FollowerFormationTests(unittest.TestCase):
         tracker.control(LeaderFrame(status(x_mm=0.0), 1.0, "192.168.1.166"), follower)
         control = tracker.control(LeaderFrame(status(x_mm=5.0), 1.1, "192.168.1.166"), follower)
         self.assertAlmostEqual(control.target_speed_mm_per_second, 50.0)
-        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (45, 45))
+        self.assertEqual((control.left_mm_per_second, control.right_mm_per_second), (8, 8))
+
+    def test_noisy_target_heading_does_not_feed_yaw_or_flip_wheels(self) -> None:
+        tracker = FormationTracker(FormationPlan())
+        follower = status(mode="idle", x_mm=-100.0, y_mm=0.0, heading_deg=0.0)
+        first = tracker.control(LeaderFrame(status(x_mm=0.0, y_mm=0.0), 1.0, "192.168.1.166"), follower)
+        second = tracker.control(LeaderFrame(status(x_mm=5.0, y_mm=20.0), 1.1, "192.168.1.166"), follower)
+        third = tracker.control(LeaderFrame(status(x_mm=10.0, y_mm=-20.0), 1.2, "192.168.1.166"), follower)
+        self.assertEqual(second.target_yaw_rate_radians_per_second, 0.0)
+        self.assertEqual(third.target_yaw_rate_radians_per_second, 0.0)
+        self.assertLessEqual(abs(second.left_mm_per_second - first.left_mm_per_second), 8)
+        self.assertLessEqual(abs(second.right_mm_per_second - first.right_mm_per_second), 8)
+        self.assertLessEqual(abs(third.left_mm_per_second - second.left_mm_per_second), 8)
+        self.assertLessEqual(abs(third.right_mm_per_second - second.right_mm_per_second), 8)
 
     def test_heading_correction_keeps_both_wheels_forward(self) -> None:
         tracker = FormationTracker(FormationPlan())
         follower = status(mode="idle", heading_deg=20.0)
-        tracker.control(LeaderFrame(status(x_mm=0.0), 1.0, "192.168.1.166"), follower)
-        control = tracker.control(LeaderFrame(status(x_mm=5.0), 1.1, "192.168.1.166"), follower)
+        for index in range(6):
+            tracker.control(LeaderFrame(status(x_mm=index * 5.0), 1.0 + index * 0.1, "192.168.1.166"), follower)
+        control = tracker.control(LeaderFrame(status(x_mm=30.0), 1.6, "192.168.1.166"), follower)
         self.assertGreaterEqual(control.left_mm_per_second, 0)
         self.assertGreaterEqual(control.right_mm_per_second, 0)
         self.assertGreater(control.left_mm_per_second, control.right_mm_per_second)

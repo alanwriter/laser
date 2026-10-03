@@ -61,9 +61,9 @@ class FormationPlan:
     follower_start_x_mm: float = -400.0
     follower_start_y_mm: float = 400.0
     follower_start_heading_deg: float = 0.0
-    distance_gain_per_second: float = 0.30
-    bearing_gain_radians_per_second_per_radian: float = 1.20
-    terminal_gain_radians_per_second_per_radian: float = -0.45
+    distance_gain_per_second: float = 0.38
+    bearing_gain_radians_per_second_per_radian: float = 0.80
+    terminal_gain_radians_per_second_per_radian: float = -0.25
     max_wheel_mm_per_second: float = 45.0
     max_yaw_rate_radians_per_second: float = 0.35
     wheel_track_mm: float = 130.0
@@ -74,6 +74,8 @@ class FormationPlan:
     max_leader_distance_mm: float = 1200.0
     reacquire_bearing_deg: float = 45.0
     reacquire_speed_mm_per_second: float = 12.0
+    target_heading_filter_gain: float = 0.20
+    max_wheel_step_mm_per_second: float = 8.0
     command_ms: int = 180
     control_period_s: float = 0.10
     frame_timeout_s: float = 0.35
@@ -177,6 +179,8 @@ class FormationTracker:
     def __init__(self, plan: FormationPlan) -> None:
         self.plan = plan
         self._previous_target: tuple[float, float, float, float] | None = None
+        self._filtered_target_heading_deg: float | None = None
+        self._previous_wheels: tuple[int, int] | None = None
 
     def _target_kinematics(
         self,
@@ -185,16 +189,15 @@ class FormationTracker:
         fallback_heading_deg: float,
         received_monotonic_s: float,
     ) -> tuple[float, float, float]:
-        """Estimate the virtual target's forward speed, heading and yaw rate.
+        """Estimate filtered target speed and heading without noisy yaw feed-forward.
 
         The target is offset from the Leader body, so its travel direction can
-        differ from Leader heading during a turn.  Differentiating the target
-        itself preserves the non-holonomic geometry better than assuming both
-        headings are always identical.
+        differ from Leader heading during a turn. Position differencing is
+        useful for speed, but its second derivative (yaw rate) was too noisy
+        at 10 Hz and made the F1 command alternate left/right every cycle.
         """
         target_speed_mm_per_second = 0.0
-        target_heading_deg = fallback_heading_deg
-        target_yaw_rate_radians_per_second = 0.0
+        raw_target_heading_deg = fallback_heading_deg
         if self._previous_target:
             old_x, old_y, old_heading_deg, old_time_s = self._previous_target
             elapsed_s = received_monotonic_s - old_time_s
@@ -203,10 +206,15 @@ class FormationTracker:
                 vy = (target_y_mm - old_y) / elapsed_s
                 target_speed_mm_per_second = math.hypot(vx, vy)
                 if target_speed_mm_per_second >= 1.0:
-                    target_heading_deg = math.degrees(math.atan2(vy, vx))
-                    target_yaw_rate_radians_per_second = math.radians(
-                        wrap_degrees(target_heading_deg - old_heading_deg)
-                    ) / elapsed_s
+                    raw_target_heading_deg = math.degrees(math.atan2(vy, vx))
+        if self._filtered_target_heading_deg is None:
+            target_heading_deg = raw_target_heading_deg
+        else:
+            target_heading_deg = self._filtered_target_heading_deg + (
+                self.plan.target_heading_filter_gain
+                * wrap_degrees(raw_target_heading_deg - self._filtered_target_heading_deg)
+            )
+        self._filtered_target_heading_deg = target_heading_deg
         self._previous_target = (
             target_x_mm,
             target_y_mm,
@@ -216,7 +224,7 @@ class FormationTracker:
         return (
             target_speed_mm_per_second,
             target_heading_deg,
-            target_yaw_rate_radians_per_second,
+            0.0,
         )
 
     def _follower_world_pose(self, follower: RoverStatus) -> tuple[float, float, float]:
@@ -304,8 +312,7 @@ class FormationTracker:
                 desired_forward_speed,
             )
         yaw_rate = clamp(
-            target_yaw_rate
-            + self.plan.bearing_gain_radians_per_second_per_radian * math.radians(alpha_deg)
+            self.plan.bearing_gain_radians_per_second_per_radian * math.radians(alpha_deg)
             + self.plan.terminal_gain_radians_per_second_per_radian * math.radians(beta_deg),
             -self.plan.max_yaw_rate_radians_per_second,
             self.plan.max_yaw_rate_radians_per_second,
@@ -323,6 +330,12 @@ class FormationTracker:
                     abs(raw_right) / self.plan.max_wheel_mm_per_second)
         left = round(raw_left / scale)
         right = round(raw_right / scale)
+        if self._previous_wheels:
+            previous_left, previous_right = self._previous_wheels
+            max_step = self.plan.max_wheel_step_mm_per_second
+            left = round(clamp(left, previous_left - max_step, previous_left + max_step))
+            right = round(clamp(right, previous_right - max_step, previous_right + max_step))
+        self._previous_wheels = (left, right)
         return FormationControl(
             target_x_mm=target_x,
             target_y_mm=target_y,
@@ -359,6 +372,10 @@ def validate_plan(plan: FormationPlan) -> None:
         raise RuntimeError("reacquire bearing must be between 0 and 180 degrees")
     if not 0.0 < plan.reacquire_speed_mm_per_second <= plan.max_wheel_mm_per_second:
         raise RuntimeError("reacquire speed must be positive and within the wheel-speed limit")
+    if not 0.0 < plan.target_heading_filter_gain <= 1.0:
+        raise RuntimeError("target heading filter gain must be in (0, 1]")
+    if not 0.0 < plan.max_wheel_step_mm_per_second <= plan.max_wheel_mm_per_second:
+        raise RuntimeError("wheel command step must be positive and within the wheel-speed limit")
     if not MIN_MOTOR_MS <= plan.command_ms <= MAX_MOTOR_MS:
         raise RuntimeError(f"command timeout must be {MIN_MOTOR_MS}..{MAX_MOTOR_MS} ms")
     if not 0.0 < plan.control_period_s < plan.command_ms / 1000.0:

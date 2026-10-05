@@ -64,6 +64,26 @@ class LeaderProtocolTests(unittest.TestCase):
         self.assertGreater(control.desired_heading_deg, origin.heading_deg)
         self.assertLess(control.left_mm_per_second, control.right_mm_per_second)
 
+    def test_wave_lead_in_is_straight_then_enters_smooth_sine(self) -> None:
+        origin_fields = list(STATUS)
+        origin_fields[1:4] = ["0.0", "0.0", "0.0"]
+        origin = parse_status_fields(origin_fields)
+        plan = WavePlan(length_mm=2000.0, lead_in_mm=400.0, amplitude_mm=150.0, cycles=1)
+        straight_fields = list(origin_fields)
+        straight_fields[1] = "400.0"
+        straight = wave_control(parse_status_fields(straight_fields), origin, plan)
+        self.assertAlmostEqual(straight.desired_lateral_mm, 0.0, places=4)
+        self.assertAlmostEqual(straight.desired_heading_deg, 0.0, places=3)
+        wave_fields = list(origin_fields)
+        wave_fields[1] = "800.0"
+        wave = wave_control(parse_status_fields(wave_fields), origin, plan)
+        self.assertGreater(wave.desired_lateral_mm, 100.0)
+
+    def test_300_mm_amplitude_is_allowed(self) -> None:
+        plan = WavePlan(length_mm=2000.0, lead_in_mm=400.0, amplitude_mm=300.0, cycles=1)
+        from leader_formation import validate_wave_plan
+        validate_wave_plan(plan)
+
     def test_wave_csv_log_records_status_and_control(self) -> None:
         status = parse_status_fields(STATUS)
         control = wave_control(status, status, WavePlan())

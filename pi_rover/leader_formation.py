@@ -39,6 +39,7 @@ class WavePlan:
     """A Pi-planned, eased sine wave expressed in the Leader's start frame."""
 
     length_mm: float = 3000.0
+    lead_in_mm: float = 0.0
     amplitude_mm: float = 200.0
     cycles: int = 3
     cruise_mm_per_second: float = 45.0
@@ -54,6 +55,7 @@ class WavePlan:
     command_ms: int = 180
     control_period_s: float = 0.10
     max_runtime_s: float = 180.0
+    formation_settle_s: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,7 @@ WAVE_LOG_FIELDS = (
     "monotonic_s",
     "elapsed_s",
     "plan_length_mm",
+    "plan_lead_in_mm",
     "plan_amplitude_mm",
     "plan_cycles",
     "plan_cruise_mm_per_second",
@@ -146,6 +149,7 @@ class WaveCsvLogger:
             "monotonic_s": round(time.monotonic(), 6),
             "elapsed_s": round(elapsed_s, 6),
             "plan_length_mm": self.plan.length_mm,
+            "plan_lead_in_mm": self.plan.lead_in_mm,
             "plan_amplitude_mm": self.plan.amplitude_mm,
             "plan_cycles": self.plan.cycles,
             "plan_cruise_mm_per_second": self.plan.cruise_mm_per_second,
@@ -330,10 +334,12 @@ def wrap_degrees(angle_deg: float) -> float:
 def validate_wave_plan(plan: WavePlan) -> None:
     if not 1000.0 <= plan.length_mm <= 5000.0:
         raise RuntimeError("Wave length must be 1000..5000 mm.")
+    if not 0.0 <= plan.lead_in_mm <= plan.length_mm - 600.0:
+        raise RuntimeError("Lead-in must leave at least 600 mm for the sine segment.")
     if not 1 <= plan.cycles <= 3:
         raise RuntimeError("Wave cycles must be 1..3 for this supervised test.")
-    if not 0.0 < plan.amplitude_mm <= 250.0:
-        raise RuntimeError("Wave amplitude must be greater than 0 and at most 250 mm.")
+    if not 0.0 < plan.amplitude_mm <= 300.0:
+        raise RuntimeError("Wave amplitude must be greater than 0 and at most 300 mm.")
     if not 0.0 < plan.min_mm_per_second <= plan.cruise_mm_per_second <= plan.max_wheel_mm_per_second <= 100.0:
         raise RuntimeError("Require 0 < min speed <= cruise speed <= max wheel speed <= 100 mm/s.")
     if plan.wheel_track_mm <= 0.0:
@@ -344,6 +350,8 @@ def validate_wave_plan(plan: WavePlan) -> None:
         raise RuntimeError(f"MOTOR timeout must be {MIN_MOTOR_MS}..{MAX_MOTOR_MS} ms.")
     if plan.max_runtime_s <= 0.0:
         raise RuntimeError("Wave runtime limit must be positive.")
+    if not 0.0 <= plan.formation_settle_s <= 20.0:
+        raise RuntimeError("Formation settle duration must be 0..20 s.")
 
 
 def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> WaveControl:
@@ -361,8 +369,9 @@ def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> Wa
     dy_mm = status.y_mm - origin.y_mm
     forward_mm = math.cos(origin_heading_rad) * dx_mm + math.sin(origin_heading_rad) * dy_mm
     lateral_mm = -math.sin(origin_heading_rad) * dx_mm + math.cos(origin_heading_rad) * dy_mm
-    path_x_mm = clamp(forward_mm, 0.0, plan.length_mm)
-    phase_rate_per_mm = 2.0 * math.pi * plan.cycles / plan.length_mm
+    sine_length_mm = plan.length_mm - plan.lead_in_mm
+    path_x_mm = clamp(forward_mm - plan.lead_in_mm, 0.0, sine_length_mm)
+    phase_rate_per_mm = 2.0 * math.pi * plan.cycles / sine_length_mm
     phase = phase_rate_per_mm * path_x_mm
     # Eased sine: k*sin(phi)*(1-cos(phi))/2. k normalizes its extrema to A.
     # It retains alternating left/right lobes while y', y'' are both zero at
@@ -453,12 +462,23 @@ class LeaderPublisher:
                 pass
             self.destination = (host, int(port))
 
-    def publish(self, status: RoverStatus) -> None:
+    def publish(
+        self,
+        status: RoverStatus,
+        forward_mm_per_second: float = 0.0,
+        yaw_rate_radians_per_second: float = 0.0,
+        formation_phase: str = "moving",
+    ) -> None:
         frame = {
             "type": "leader_state",
             "version": 1,
             "monotonic_s": round(time.monotonic(), 3),
             "status": asdict(status),
+            "motion": {
+                "forward_mm_per_second": round(forward_mm_per_second, 3),
+                "yaw_rate_radians_per_second": round(yaw_rate_radians_per_second, 5),
+            },
+            "formation_phase": formation_phase,
         }
         encoded = json.dumps(frame, separators=(",", ":")).encode("utf-8")
         if self.sock and self.destination:
@@ -620,7 +640,11 @@ def run_wave(
                 raise RuntimeError("Wave runtime limit reached; stopping.")
 
             control = wave_control(current, origin, plan)
-            publisher.publish(current)
+            publisher.publish(
+                current,
+                (control.left_mm_per_second + control.right_mm_per_second) / 2.0,
+                (control.right_mm_per_second - control.left_mm_per_second) / plan.wheel_track_mm,
+            )
             logger.record("control", current, time.monotonic() - started_at, control)
             print(
                 "WAVE "
@@ -636,7 +660,16 @@ def run_wave(
             ):
                 link.stop_safely()
                 final = parse_status_fields(link.request("STATUS").fields)
-                publisher.publish(final)
+                # Keep the Leader still but continue broadcasting a bounded
+                # settle phase.  This lets a lagging F1 close its final
+                # relative-pose error instead of stopping the instant Leader
+                # reaches its endpoint.
+                settle_started_at = time.monotonic()
+                while time.monotonic() - settle_started_at < plan.formation_settle_s:
+                    publisher.publish(final, formation_phase="settle")
+                    logger.record("settle", final, time.monotonic() - started_at, control)
+                    time.sleep(plan.control_period_s)
+                publisher.publish(final, formation_phase="stopped")
                 logger.record("completed", final, time.monotonic() - started_at, control)
                 print_status(final)
                 print("Wave completed. Nano is stopped.")
@@ -699,11 +732,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pi-planned 3 m / three-cycle sine wave using the Nano trained wheel-speed controller.",
     )
     wave.add_argument("--length-mm", type=float, default=3000.0)
+    wave.add_argument("--lead-in-mm", type=float, default=0.0, help="Straight segment before the sine wave.")
     wave.add_argument("--amplitude-mm", type=float, default=200.0)
     wave.add_argument("--cycles", type=int, default=3)
     wave.add_argument("--speed-mm-s", type=float, default=45.0, help="Nominal chassis speed (default 45 mm/s).")
     wave.add_argument("--command-ms", type=int, default=180, help="Per-command Nano auto-stop timeout (default 180).")
     wave.add_argument("--max-runtime-s", type=float, default=180.0)
+    wave.add_argument("--formation-settle-s", type=float, default=10.0, help="Leader-still time for F1 final convergence.")
     wave.add_argument(
         "--log",
         type=Path,
@@ -795,11 +830,13 @@ def main() -> int:
                 raise RuntimeError("Refusing Pi-side wave without --unlock.")
             plan = WavePlan(
                 length_mm=args.length_mm,
+                lead_in_mm=args.lead_in_mm,
                 amplitude_mm=args.amplitude_mm,
                 cycles=args.cycles,
                 cruise_mm_per_second=args.speed_mm_s,
                 command_ms=args.command_ms,
                 max_runtime_s=args.max_runtime_s,
+                formation_settle_s=args.formation_settle_s,
             )
             validate_wave_plan(plan)
             status = commission(link, args.test_pwm, args.test_duration_ms)

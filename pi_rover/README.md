@@ -96,11 +96,12 @@ velocity controller: PID, static-friction feed-forward, acceleration limit,
 encoder measurement, PWM and expiry stop. The Pi is the single USB owner and
 is responsible only for the path planner.
 
-This command runs the requested 3 m route with three full sine periods and
-±200 mm lateral amplitude:
+This command runs the default 3 m route with three full sine periods and a
+gentle ±50 mm lateral amplitude.  Use `--amplitude-mm` when an experiment
+requires another amplitude:
 
 ```text
-y = 200 × sin(6πx / 3000),  x = 0…3000 mm
+y = 50 × sin(6πx / 3000),  x = 0…3000 mm
 ```
 
 ```bash
@@ -129,8 +130,11 @@ does not promise the original final heading. The terminal prints measured
 `x`, `y`, target `y`, heading error, and each wheel-speed setpoint for live
 monitoring.
 
-Use `--broadcast HOST:PORT` to publish the measured leader pose while it runs,
-for example `--broadcast 239.42.0.1:5005`.
+Use `--broadcast HOST:PORT` to publish the measured leader pose while it runs.
+The option may be repeated, which is preferred for the two physical followers:
+`--broadcast 192.168.1.199:5005 --broadcast 192.168.1.175:5005`.  A multicast
+destination such as `239.42.0.1:5005` remains supported for a network that
+reliably forwards multicast.
 
 ## Leader part of the formation algorithm
 
@@ -157,7 +161,7 @@ before it issues `PATH`, so opening the port cannot erase the required state:
 # PATH 1 is 500 mm straight; PATH 2 is 700 mm square.
 # Broadcast measured leader state to the follower network every 500 ms.
 python3 leader_formation.py --port <PORT> leader 1 --unlock \
-  --broadcast 239.42.0.1:5005
+  --broadcast 192.168.1.199:5005 --broadcast 192.168.1.175:5005
 ```
 
 `--telemetry-ms` accepts `100–2000` ms; the default `500` ms is appropriate
@@ -229,7 +233,8 @@ cd ~/pi_rover
 python3 leader_formation.py \
   --port /dev/serial/by-id/<Leader-Nano裝置名稱> \
   wave --unlock --length-mm 1000 --amplitude-mm 50 --cycles 1 \
-  --speed-mm-s 25 --broadcast 239.42.0.1:5005
+  --speed-mm-s 25 --broadcast 192.168.1.199:5005 \
+  --broadcast 192.168.1.175:5005
 ```
 
 Place both rovers first. Type `FOLLOWER-1` only after F1 is placed at its start

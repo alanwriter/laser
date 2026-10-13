@@ -40,7 +40,9 @@ class WavePlan:
 
     length_mm: float = 3000.0
     lead_in_mm: float = 0.0
-    amplitude_mm: float = 200.0
+    # Keep the default formation demonstration gentle enough that both rear
+    # followers can converge without immediately saturating their steering.
+    amplitude_mm: float = 50.0
     cycles: int = 3
     cruise_mm_per_second: float = 45.0
     min_mm_per_second: float = 18.0
@@ -442,25 +444,29 @@ def require_confirmation(expected: str, message: str) -> None:
 
 
 class LeaderPublisher:
-    """Broadcast the actual leader pose; follower controllers own their own motors."""
+    """Publish the actual leader pose; follower controllers own their own motors."""
 
-    def __init__(self, destination: str | None) -> None:
+    def __init__(self, destinations: str | list[str] | None) -> None:
         self.sock: socket.socket | None = None
-        self.destination: tuple[str, int] | None = None
-        if destination:
+        self.destinations: list[tuple[str, int]] = []
+        if isinstance(destinations, str):
+            destinations = [destinations]
+        for destination in destinations or []:
             host, separator, port = destination.rpartition(":")
             if not separator or not host or not port.isdecimal():
                 raise RuntimeError("--broadcast must use HOST:PORT, for example 239.42.0.1:5005")
+            self.destinations.append((host, int(port)))
+        if self.destinations:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                if ipaddress.ip_address(host).is_multicast:
-                    # Formation traffic stays on the current local network;
-                    # it must never leak through a router onto another LAN.
-                    self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
-            except ValueError:
-                # A resolvable hostname is valid for ordinary unicast UDP.
-                pass
-            self.destination = (host, int(port))
+            for host, _port in self.destinations:
+                try:
+                    if ipaddress.ip_address(host).is_multicast:
+                        # Formation traffic stays on the current local network;
+                        # it must never leak through a router onto another LAN.
+                        self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+                except ValueError:
+                    # A resolvable hostname is valid for ordinary unicast UDP.
+                    pass
 
     def publish(
         self,
@@ -481,8 +487,9 @@ class LeaderPublisher:
             "formation_phase": formation_phase,
         }
         encoded = json.dumps(frame, separators=(",", ":")).encode("utf-8")
-        if self.sock and self.destination:
-            self.sock.sendto(encoded, self.destination)
+        if self.sock:
+            for destination in self.destinations:
+                self.sock.sendto(encoded, destination)
         print(encoded.decode("utf-8"))
 
     def close(self) -> None:
@@ -550,7 +557,7 @@ def commission(link: NanoLink, pwm: int, duration_ms: int) -> RoverStatus:
     return result
 
 
-def run_leader(link: NanoLink, status: RoverStatus, path: int, telemetry_ms: int, broadcast: str | None) -> None:
+def run_leader(link: NanoLink, status: RoverStatus, path: int, telemetry_ms: int, broadcast: list[str] | None) -> None:
     if path not in {1, 2}:
         raise RuntimeError("Leader firmware permits PATH 1 or 2 only.")
     if not status.ready_for_path:
@@ -593,7 +600,7 @@ def run_wave(
     link: NanoLink,
     status: RoverStatus,
     plan: WavePlan,
-    broadcast: str | None,
+    broadcast: list[str] | None,
     log_path: Path | None,
 ) -> None:
     """Execute a Pi-planned, Nano-actuated wave using VELOCITY setpoints.
@@ -723,7 +730,7 @@ def build_parser() -> argparse.ArgumentParser:
     leader = actions.add_parser("leader", help="Run PATH 1/2 and publish measured leader poses for followers.")
     leader.add_argument("path", type=int, choices=(1, 2))
     leader.add_argument("--telemetry-ms", type=int, default=500, help="Nano status interval, 100..2000 ms (default 500).")
-    leader.add_argument("--broadcast", help="Optional follower network destination, HOST:PORT (UDP).")
+    leader.add_argument("--broadcast", action="append", metavar="HOST:PORT", help="Follower UDP destination; repeat for each follower.")
     leader.add_argument("--test-pwm", type=int, default=80, help="Pre-PATH encoder-test PWM, 1..165 (default 80).")
     leader.add_argument("--test-duration-ms", type=int, default=800, help="Pre-PATH encoder-test duration, 50..1200 ms (default 800).")
     leader.add_argument("--unlock", action="store_true")
@@ -733,7 +740,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     wave.add_argument("--length-mm", type=float, default=3000.0)
     wave.add_argument("--lead-in-mm", type=float, default=0.0, help="Straight segment before the sine wave.")
-    wave.add_argument("--amplitude-mm", type=float, default=200.0)
+    wave.add_argument("--amplitude-mm", type=float, default=50.0)
     wave.add_argument("--cycles", type=int, default=3)
     wave.add_argument("--speed-mm-s", type=float, default=45.0, help="Nominal chassis speed (default 45 mm/s).")
     wave.add_argument("--command-ms", type=int, default=180, help="Per-command Nano auto-stop timeout (default 180).")
@@ -744,7 +751,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="CSV destination; default is ~/pi_rover/logs/wave_<UTC timestamp>.csv",
     )
-    wave.add_argument("--broadcast", help="Optional follower network destination, HOST:PORT (UDP).")
+    wave.add_argument("--broadcast", action="append", metavar="HOST:PORT", help="Follower UDP destination; repeat for each follower.")
     wave.add_argument("--test-pwm", type=int, default=80, help="Pre-wave encoder-test PWM, 1..165 (default 80).")
     wave.add_argument("--test-duration-ms", type=int, default=800, help="Pre-wave encoder-test duration, 50..1200 ms (default 800).")
     wave.add_argument("--unlock", action="store_true")

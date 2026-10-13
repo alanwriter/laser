@@ -7,10 +7,13 @@ import unittest
 from pathlib import Path
 
 from follower_formation import (
+    FOLLOWER_2,
     FormationPlan,
     FormationTracker,
     FollowerCsvLogger,
     LeaderFrame,
+    build_parser,
+    default_follower_log_path,
     leader_is_safe_for_settle,
     leader_is_safe_and_moving,
     parse_leader_frame,
@@ -31,6 +34,30 @@ def status(**changes: object) -> RoverStatus:
 
 
 class FollowerFormationTests(unittest.TestCase):
+    def test_follower_2_profile_is_right_rear_with_matching_reset_origin(self) -> None:
+        args = build_parser(FOLLOWER_2).parse_args([
+            "--leader-host", "192.168.1.166", "--unlock",
+        ])
+        self.assertEqual((args.offset_x_mm, args.offset_y_mm), (-400.0, -400.0))
+        self.assertEqual(
+            (args.follower_start_x_mm, args.follower_start_y_mm),
+            (-400.0, -400.0),
+        )
+        tracker = FormationTracker(FormationPlan(
+            offset_x_mm=args.offset_x_mm,
+            offset_y_mm=args.offset_y_mm,
+            follower_start_x_mm=args.follower_start_x_mm,
+            follower_start_y_mm=args.follower_start_y_mm,
+        ))
+        control = tracker.control(
+            LeaderFrame(status(), 1.0, "192.168.1.166"),
+            status(mode="idle"),
+        )
+        self.assertEqual((control.target_x_mm, control.target_y_mm), (-400.0, -400.0))
+        self.assertAlmostEqual(control.leader_distance_mm, 400.0 * 2 ** 0.5)
+        self.assertEqual((control.rho_mm, control.alpha_deg, control.beta_deg), (0.0, 0.0, 0.0))
+        self.assertTrue(default_follower_log_path(FOLLOWER_2).name.startswith("follower2_"))
+
     def test_csv_logger_records_leader_follower_and_control_fields(self) -> None:
         tracker = FormationTracker(FormationPlan())
         leader = LeaderFrame(status(x_mm=10.0), 1.0, "192.168.1.166", 50.0, 0.1, True)

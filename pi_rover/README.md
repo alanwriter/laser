@@ -252,6 +252,33 @@ change: join all Pi devices to that same local network, then replace only
 `--leader-host` with Leader's new local address. The multicast endpoint may
 stay `239.42.0.1:5005`; it is not a public Internet service.
 
+## Follower 2 formation controller
+
+`follower2_formation.py` reuses the F1 controller and its safety contract,
+but its defaults place F2 400 mm rearward and 400 mm to Leader's right:
+`(-400 mm, -400 mm)` in the Leader body frame. This is the right-rear
+45-degree mirror of F1, also 565.7 mm from Leader. Align F2's heading to
+Leader before arming it, then place its centre exactly at that right-rear
+location. Its local Nano RESET is deliberately performed only after that
+placement.
+
+```bash
+# F2 terminal. This stays stopped through calibration, wheel test and arming
+# until it receives three fresh, safe moving Leader multicast packets.
+cd ~/pi_rover
+python3 follower2_formation.py \
+  --port /dev/serial/by-id/<F2-Nano裝置名稱> \
+  --leader-host 192.168.1.166 \
+  --listen 0.0.0.0:5005 \
+  --multicast-group 239.42.0.1 \
+  --unlock
+```
+
+Type `FOLLOWER-2` only after F2 is physically in the right-rear position.
+F1 and F2 may listen to the same Leader multicast stream from their separate
+Pi devices; each process opens only its own Nano USB port and writes a
+separate `follower2_<UTC timestamp>.csv` log.
+
 ## Safety contract
 
 - USB open waits two seconds; USB loss, protocol error, Ctrl-C, a fault, and

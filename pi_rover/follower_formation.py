@@ -45,6 +45,39 @@ ACTIVE_LEADER_MODES = frozenset({"velocity", "path"})
 
 
 @dataclass(frozen=True)
+class FollowerProfile:
+    """Identity and default Leader-body formation pose for one follower Pi."""
+
+    short_name: str
+    confirmation_token: str
+    display_name: str
+    log_prefix: str
+    offset_x_mm: float
+    offset_y_mm: float
+
+
+# F1 and F2 use one tested controller implementation.  Their only formation
+# difference at this stage is the side of the Leader body frame on which each
+# Nano RESET origin and virtual target are placed.
+FOLLOWER_1 = FollowerProfile(
+    short_name="F1",
+    confirmation_token="FOLLOWER-1",
+    display_name="Follower-1",
+    log_prefix="follower",
+    offset_x_mm=-400.0,
+    offset_y_mm=400.0,
+)
+FOLLOWER_2 = FollowerProfile(
+    short_name="F2",
+    confirmation_token="FOLLOWER-2",
+    display_name="Follower-2",
+    log_prefix="follower2",
+    offset_x_mm=-400.0,
+    offset_y_mm=-400.0,
+)
+
+
+@dataclass(frozen=True)
 class FormationPlan:
     """Left-rear target pose and conservative Leader-frame tracking limits.
 
@@ -197,9 +230,9 @@ class FollowerCsvLogger:
         self.file.close()
 
 
-def default_follower_log_path() -> Path:
+def default_follower_log_path(profile: FollowerProfile = FOLLOWER_1) -> Path:
     timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    return Path(__file__).resolve().parent / "logs" / f"follower_{timestamp}.csv"
+    return Path(__file__).resolve().parent / "logs" / f"{profile.log_prefix}_{timestamp}.csv"
 
 
 def parse_endpoint(text: str) -> tuple[str, int]:
@@ -613,13 +646,14 @@ def run_follow(
     test_pwm: int,
     test_duration_ms: int,
     log_path: Path | None,
+    profile: FollowerProfile = FOLLOWER_1,
 ) -> None:
-    """Commission F1, then follow only fresh and safe Leader packets."""
+    """Commission one follower, then follow only fresh and safe Leader packets."""
     validate_plan(plan)
     commission(link, test_pwm, test_duration_ms)
     require_confirmation(
-        "FOLLOWER-1",
-        "Place F1 at its declared start pose and keep it still. After confirmation Pi "
+        profile.confirmation_token,
+        f"Place {profile.short_name} at its declared start pose and keep it still. After confirmation Pi "
         "will RESET its odometry at that pose, then wait for Leader broadcast. Retain "
         "physical motor-power cutoff.",
     )
@@ -629,17 +663,17 @@ def run_follow(
     print(link.request("RESET").raw)
     initial = parse_status_fields(link.request("STATUS").fields)
     if not initial.ready_for_path:
-        raise RuntimeError("F1 RESET did not preserve ready state; refusing formation control.")
+        raise RuntimeError(f"{profile.short_name} RESET did not preserve ready state; refusing formation control.")
     tracker = FormationTracker(plan)
     latest: LeaderFrame | None = None
     follower: RoverStatus | None = None
     control: FormationControl | None = None
     consecutive_active_frames = 0
     stopped_for_wait = True
-    logger = FollowerCsvLogger(log_path or default_follower_log_path())
+    logger = FollowerCsvLogger(log_path or default_follower_log_path(profile))
     started_at = time.monotonic()
-    print(f"F1 CSV log: {logger.path}")
-    print("F1 armed and listening. It remains stopped until three fresh, safe moving Leader packets arrive.")
+    print(f"{profile.short_name} CSV log: {logger.path}")
+    print(f"{profile.short_name} armed and listening. It remains stopped until three fresh, safe moving Leader packets arrive.")
     try:
         while True:
             frame = receiver.receive_latest(plan.control_period_s)
@@ -663,7 +697,7 @@ def run_follow(
                 if not stopped_for_wait:
                     link.stop_safely()
                     stopped_for_wait = True
-                    print("F1 STOP: waiting for a fresh, safe moving Leader frame.")
+                    print(f"{profile.short_name} STOP: waiting for a fresh, safe moving Leader frame.")
                     logger.record("wait_stop", started_at, latest, follower, control, "leader frame unavailable or unsafe")
                 else:
                     logger.record("waiting", started_at, latest, follower, control, "leader frame unavailable or unsafe")
@@ -671,8 +705,8 @@ def run_follow(
 
             follower = parse_status_fields(link.request("STATUS", wait=0.7).fields)
             if not follower.ready_for_path:
-                logger.record("unsafe_follower", started_at, latest, follower, control, "F1 Nano preflight became unsafe")
-                raise RuntimeError("F1 Nano preflight became unsafe; stopping.")
+                logger.record("unsafe_follower", started_at, latest, follower, control, f"{profile.short_name} Nano preflight became unsafe")
+                raise RuntimeError(f"{profile.short_name} Nano preflight became unsafe; stopping.")
             control = tracker.control(latest, follower)
             if not control.tracking_safe:
                 logger.record("safety_stop", started_at, latest, follower, control, control.stop_reason)
@@ -684,7 +718,7 @@ def run_follow(
             ):
                 link.stop_safely()
                 logger.record("settled", started_at, latest, follower, control)
-                print("F1 settled at the Leader-relative target.")
+                print(f"{profile.short_name} settled at the Leader-relative target.")
                 return
             link.request(
                 "VELOCITY",
@@ -704,21 +738,21 @@ def run_follow(
         link.stop_safely()
         logger.record("final_stop", started_at, latest, follower, control)
         logger.close()
-        print(f"F1 CSV log: {logger.path}")
+        print(f"{profile.short_name} CSV log: {logger.path}")
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Safe Follower-1 UDP formation controller.")
-    parser.add_argument("--port", help="F1 Nano /dev/serial/by-id path; auto-detect only when exactly one exists.")
+def build_parser(profile: FollowerProfile = FOLLOWER_1) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=f"Safe {profile.display_name} UDP formation controller.")
+    parser.add_argument("--port", help=f"{profile.short_name} Nano /dev/serial/by-id path; auto-detect only when exactly one exists.")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--listen", default="0.0.0.0:5005", help="local UDP bind endpoint (default 0.0.0.0:5005)")
     parser.add_argument("--leader-host", required=True, help="required source IPv4 address of the Leader Pi")
     parser.add_argument("--multicast-group", help="join this IPv4 multicast group, e.g. 239.42.0.1")
-    parser.add_argument("--offset-x-mm", type=float, default=-400.0, help="F1 target x in Leader body frame (default -400, rear)")
-    parser.add_argument("--offset-y-mm", type=float, default=400.0, help="F1 target y in Leader body frame (default +400, left)")
-    parser.add_argument("--follower-start-x-mm", type=float, default=-400.0, help="F1 Nano RESET origin in experiment frame")
-    parser.add_argument("--follower-start-y-mm", type=float, default=400.0, help="F1 Nano RESET origin in experiment frame")
-    parser.add_argument("--follower-start-heading-deg", type=float, default=0.0, help="F1 initial heading relative to Leader frame")
+    parser.add_argument("--offset-x-mm", type=float, default=profile.offset_x_mm, help=f"{profile.short_name} target x in Leader body frame (default -400, rear)")
+    parser.add_argument("--offset-y-mm", type=float, default=profile.offset_y_mm, help=f"{profile.short_name} target y in Leader body frame (default {profile.offset_y_mm:+.0f})")
+    parser.add_argument("--follower-start-x-mm", type=float, default=profile.offset_x_mm, help=f"{profile.short_name} Nano RESET origin in experiment frame")
+    parser.add_argument("--follower-start-y-mm", type=float, default=profile.offset_y_mm, help=f"{profile.short_name} Nano RESET origin in experiment frame")
+    parser.add_argument("--follower-start-heading-deg", type=float, default=0.0, help=f"{profile.short_name} initial heading relative to Leader frame")
     parser.add_argument("--max-speed-mm-s", type=float, default=75.0)
     parser.add_argument("--command-ms", type=int, default=180)
     parser.add_argument("--frame-timeout-s", type=float, default=0.35)
@@ -727,14 +761,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--log",
         type=Path,
-        help="CSV destination; default is ~/pi_rover/logs/follower_<UTC timestamp>.csv",
+        help=f"CSV destination; default is ~/pi_rover/logs/{profile.log_prefix}_<UTC timestamp>.csv",
     )
     parser.add_argument("--unlock", action="store_true", help="required before the explicit commissioning/follow confirmations")
     return parser
 
 
-def main() -> int:
-    args = build_parser().parse_args()
+def main(profile: FollowerProfile = FOLLOWER_1) -> int:
+    args = build_parser(profile).parse_args()
     if not args.unlock:
         print("ERROR: refusing formation control without --unlock.", file=sys.stderr)
         return 1
@@ -769,7 +803,7 @@ def main() -> int:
     atexit.register(link.stop_safely)
     try:
         link.open()
-        run_follow(link, receiver, plan, args.test_pwm, args.test_duration_ms, args.log)
+        run_follow(link, receiver, plan, args.test_pwm, args.test_duration_ms, args.log, profile)
         return 0
     except (RuntimeError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

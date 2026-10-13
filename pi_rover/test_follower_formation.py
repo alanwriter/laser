@@ -43,6 +43,7 @@ class FollowerFormationTests(unittest.TestCase):
             (args.follower_start_x_mm, args.follower_start_y_mm),
             (-400.0, -400.0),
         )
+        self.assertEqual((args.test_pwm, args.test_duration_ms), (40, 400))
         tracker = FormationTracker(FormationPlan(
             offset_x_mm=args.offset_x_mm,
             offset_y_mm=args.offset_y_mm,

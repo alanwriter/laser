@@ -54,6 +54,8 @@ class FollowerProfile:
     log_prefix: str
     offset_x_mm: float
     offset_y_mm: float
+    commissioning_pwm: int
+    commissioning_duration_ms: int
 
 
 # F1 and F2 use one tested controller implementation.  Their only formation
@@ -66,6 +68,8 @@ FOLLOWER_1 = FollowerProfile(
     log_prefix="follower",
     offset_x_mm=-400.0,
     offset_y_mm=400.0,
+    commissioning_pwm=80,
+    commissioning_duration_ms=800,
 )
 FOLLOWER_2 = FollowerProfile(
     short_name="F2",
@@ -74,6 +78,11 @@ FOLLOWER_2 = FollowerProfile(
     log_prefix="follower2",
     offset_x_mm=-400.0,
     offset_y_mm=-400.0,
+    # F2's encoder preflight is reliable at the formation-speed-equivalent
+    # bench setting.  Its 80 PWM diagnostic introduced B-phase noise, so do
+    # not use that faster F1-only commissioning setting on F2.
+    commissioning_pwm=40,
+    commissioning_duration_ms=400,
 )
 
 
@@ -756,8 +765,8 @@ def build_parser(profile: FollowerProfile = FOLLOWER_1) -> argparse.ArgumentPars
     parser.add_argument("--max-speed-mm-s", type=float, default=75.0)
     parser.add_argument("--command-ms", type=int, default=180)
     parser.add_argument("--frame-timeout-s", type=float, default=0.35)
-    parser.add_argument("--test-pwm", type=int, default=80)
-    parser.add_argument("--test-duration-ms", type=int, default=800)
+    parser.add_argument("--test-pwm", type=int, default=profile.commissioning_pwm)
+    parser.add_argument("--test-duration-ms", type=int, default=profile.commissioning_duration_ms)
     parser.add_argument(
         "--log",
         type=Path,

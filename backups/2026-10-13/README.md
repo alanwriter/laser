@@ -11,3 +11,7 @@ The CSV files are intentionally stored with their corresponding controller so
 the program version, deployed HEX, and raw measurement data remain together.
 The three CSV files used for the final combined trajectory figure are also
 available in `analysis/2026-10-13-three-rover/`.
+
+For completeness, `mac-local-pi-rover-logs/` and
+`mac-local-visualizations/` preserve the pre-existing local records and JPG
+figures that were not resident on a Pi at the time of this snapshot.

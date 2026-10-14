@@ -8,6 +8,7 @@ from leader_formation import (
     NanoLink,
     WaveCsvLogger,
     WavePlan,
+    build_parser,
     parse_status_fields,
     wave_control,
 )
@@ -20,6 +21,11 @@ STATUS = (
 
 
 class LeaderProtocolTests(unittest.TestCase):
+    def test_wave_cli_defaults_to_short_route_and_no_endpoint_chase(self) -> None:
+        args = build_parser().parse_args(["wave", "--unlock"])
+        self.assertEqual(args.length_mm, 1500.0)
+        self.assertEqual(args.formation_settle_s, 0.0)
+
     def test_parses_status_with_all_preflight_flags(self) -> None:
         status = parse_status_fields(STATUS)
         self.assertTrue(status.ready_for_path)

@@ -736,16 +736,21 @@ def build_parser() -> argparse.ArgumentParser:
     leader.add_argument("--unlock", action="store_true")
     wave = actions.add_parser(
         "wave",
-        help="Pi-planned 3 m / three-cycle sine wave using the Nano trained wheel-speed controller.",
+        help="Pi-planned 1.5 m / three-cycle sine wave using the Nano trained wheel-speed controller.",
     )
-    wave.add_argument("--length-mm", type=float, default=3000.0)
+    wave.add_argument("--length-mm", type=float, default=1500.0)
     wave.add_argument("--lead-in-mm", type=float, default=0.0, help="Straight segment before the sine wave.")
     wave.add_argument("--amplitude-mm", type=float, default=50.0)
     wave.add_argument("--cycles", type=int, default=3)
     wave.add_argument("--speed-mm-s", type=float, default=45.0, help="Nominal chassis speed (default 45 mm/s).")
     wave.add_argument("--command-ms", type=int, default=180, help="Per-command Nano auto-stop timeout (default 180).")
     wave.add_argument("--max-runtime-s", type=float, default=180.0)
-    wave.add_argument("--formation-settle-s", type=float, default=10.0, help="Leader-still time for F1 final convergence.")
+    wave.add_argument(
+        "--formation-settle-s",
+        type=float,
+        default=0.0,
+        help="Optional Leader-still final-convergence time (default 0: stop followers at route end).",
+    )
     wave.add_argument(
         "--log",
         type=Path,

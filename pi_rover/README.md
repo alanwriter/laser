@@ -96,12 +96,12 @@ velocity controller: PID, static-friction feed-forward, acceleration limit,
 encoder measurement, PWM and expiry stop. The Pi is the single USB owner and
 is responsible only for the path planner.
 
-This command runs the default 3 m route with three full sine periods and a
+This command runs the default 1.5 m route with three full sine periods and a
 gentle ±50 mm lateral amplitude.  Use `--amplitude-mm` when an experiment
 requires another amplitude:
 
 ```text
-y = 50 × sin(6πx / 3000),  x = 0…3000 mm
+y = 50 × sin(6πx / 1500),  x = 0…1500 mm
 ```
 
 ```bash
@@ -113,7 +113,10 @@ python3 leader_formation.py --port <PORT> wave --unlock --speed-mm-s 55
 ```
 
 The initial tuning is deliberately conservative (45 mm/s, 10 Hz Pi replanning,
-180 ms setpoint expiry). Clear at least a 3.5 m × 1.2 m lane. `Ctrl-C`, USB
+180 ms setpoint expiry). At the endpoint the default is an immediate Leader
+`stopped` broadcast, so each Follower stops rather than continuing to chase a
+stationary target; `--formation-settle-s` explicitly enables endpoint
+convergence experiments. Clear at least a 2.0 m × 1.2 m lane. `Ctrl-C`, USB
 loss, bad status, fault, finish-corridor overrun, or the 180 s deadline causes
 a best-effort `STOP`.
 

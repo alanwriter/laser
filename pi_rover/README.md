@@ -226,12 +226,10 @@ python3 follower_formation.py \
   --port /dev/serial/by-id/<F1-Nano裝置名稱> \
   --leader-host 192.168.1.166 \
   --listen 0.0.0.0:5005 \
-  --multicast-group 239.42.0.1 \
   --unlock
 
-# Leader terminal: use the same multicast destination. The first formation
-# trial is deliberately a slow, shallow single wave; do not begin with the
-# 3 m / three-cycle route.
+# Leader terminal: send the measured state directly to the two follower Pis.
+# The first formation trial is deliberately a slow, shallow single wave.
 cd ~/pi_rover
 python3 leader_formation.py \
   --port /dev/serial/by-id/<Leader-Nano裝置名稱> \
@@ -278,14 +276,13 @@ python3 follower2_formation.py \
   --port /dev/serial/by-id/<F2-Nano裝置名稱> \
   --leader-host 192.168.1.166 \
   --listen 0.0.0.0:5005 \
-  --multicast-group 239.42.0.1 \
   --unlock
 ```
 
 Type `FOLLOWER-2` only after F2 is physically in the right-rear position.
-F1 and F2 may listen to the same Leader multicast stream from their separate
-Pi devices; each process opens only its own Nano USB port and writes a
-separate `follower2_<UTC timestamp>.csv` log.
+Leader sends one direct UDP datagram to each Follower Pi; each process opens
+only its own Nano USB port and writes a separate `follower2_<UTC timestamp>.csv`
+log.
 
 ## Safety contract
 

@@ -38,7 +38,7 @@ MAX_TELEMETRY_MS = 2000
 class WavePlan:
     """A Pi-planned, eased sine wave expressed in the Leader's start frame."""
 
-    length_mm: float = 3000.0
+    length_mm: float = 1500.0
     lead_in_mm: float = 0.0
     # Keep the default formation demonstration gentle enough that both rear
     # followers can converge without immediately saturating their steering.
@@ -57,7 +57,7 @@ class WavePlan:
     command_ms: int = 180
     control_period_s: float = 0.10
     max_runtime_s: float = 180.0
-    formation_settle_s: float = 10.0
+    formation_settle_s: float = 0.0
 
 
 @dataclass(frozen=True)

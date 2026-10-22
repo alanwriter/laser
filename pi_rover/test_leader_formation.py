@@ -65,7 +65,7 @@ class LeaderProtocolTests(unittest.TestCase):
         # This point lies close to the default gentle (+/-50 mm) reference.
         fields[2] = "40.0"
         point = parse_status_fields(fields)
-        control = wave_control(point, origin, WavePlan())
+        control = wave_control(point, origin, WavePlan(length_mm=3000.0))
         self.assertAlmostEqual(control.forward_mm, 250.0)
         self.assertAlmostEqual(control.desired_lateral_mm, 38.490, places=3)
         self.assertGreater(control.desired_heading_deg, origin.heading_deg)

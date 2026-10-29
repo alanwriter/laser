@@ -1,11 +1,18 @@
 # laser 專案工作約定
 
 這個資料夾控制三台實體差速車。新對話先讀 `pi_rover/RUNBOOK.md`、
-`pi_rover/NORMAL_FOLLOW_V0.1.0.md`、`pi_rover/CALIBRATION_PLAN.md` 與最近一次
+`pi_rover/NORMAL_FOLLOW_V0.1.0.md`、`pi_rover/CALIBRATION_PLAN.md`、
+`pi_rover/PLOT_CONVENTIONS.md` 與最近一次
 實跑紀錄；歷史 A/B 操作另見 `analysis/2026-10-29-f1-f2-theory/next_run_sop_draft.md`。
 不要把上一段對話的模擬或備份當作目前的實車狀態。
 
 ## 三車實驗
+
+- 使用者定義三車座標點在 **MPU6050**。車體長 250 mm、寬 150 mm，MPU 距車頭
+  100 mm，故圖上以 MPU 點為錨、車頭 +100 mm／車尾 −150 mm／左右 ±75 mm，
+  依 CSV 航向旋轉半透明虛線車體。以後的軌跡圖都同時標點與車體外框；這只改
+  圖的幾何呈現，不平移 CSV 座標或暗改控制器。詳見 `pi_rover/PLOT_CONVENTIONS.md`；
+  GitHub Copilot 的對應提示在 `.github/copilot-instructions.md`。
 
 - F1 固定在 Leader 左後 `(-400,+400)` mm，使用 Pi 上的**舊版**編隊控制器。
 - F2 固定在 Leader 右後 `(-400,-400)` mm，使用**新版路徑**控制器。
@@ -21,12 +28,18 @@
   地面真值，不能把車上里程計誤差當作實際地面誤差。
 - `normal-follow/v0.1.0` 是**本地候選版本**：F1/F2 程式設定都使用各自路徑
   切線的跟隨器；F1 Pi 尚未部署這版。實車校正順序見 `pi_rover/CALIBRATION_PLAN.md`。
-  前述兩趟 CSV 仍是 F1 舊／F2 新的歷史資料，不能當成雙新控制器的實測。
-- 最新一次「重跑並拍完整影片」於 2026-10-29 預檢中止：F1 接地 PWM 80／800 ms
+  前述實跑 CSV 仍是 F1 舊／F2 新的歷史資料，不能當成雙新控制器的實測。
+- 同日第三趟 `08:40:14Z` 已完成，三台均收到 STOP、控制程序退出。完整影片
+  `IMG_8103.MOV` 只有最後 40 秒是行駛；對時圖與結論見
+  `analysis/2026-10-29-f1-f2-theory/real_run_084014Z/video_csv_findings.md`。
+  影片起跑／停止與 CSV 時間大致相合；F1 舊／F2 新的車道橫向誤差中位數
+  `52.1/20.7 mm`，但這是**車上里程計**，相機未校正，尚無真實地面毫米誤差。
+- 第三趟之前的「重跑並拍完整影片」預檢曾中止：F1 接地 PWM 80／800 ms
   左右 count 1878／396、航向 −120.2°；使用者確認右輪明顯較慢或卡住。三台
   均已送 STOP ACK，沒有送 `FOLLOWER-1`／`FOLLOWER-2`／`WAVE-3`。
   詳見 `analysis/2026-10-29-f1-f2-theory/preflight_abort_f1_right_wheel.md`。
-  **下次先檢查 F1 右輪，不要把這次預檢旗標通過當成可以直接出發。**
+  第三趟預檢仍有 F1 左右 count `1836/885`，雖旗標通過，右輪偏慢問題尚未排除；
+  **下次先檢查 F1 右輪，不要把預檢旗標通過當成機械狀態正常。**
 
 ## 使用者偏好的試跑節奏
 

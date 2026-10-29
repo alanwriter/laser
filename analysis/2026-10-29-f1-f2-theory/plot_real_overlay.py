@@ -33,7 +33,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, default=HERE / "real_run_084014Z")
     parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--note", default="Solid = onboard odometry (MPU reference). Dashed = controller target / planned route. Body outline is a geometric overlay, not camera ground truth.")
+    parser.add_argument("--note", default=None)
     args = parser.parse_args()
     leader = rows(args.run_dir, "leader", "control")
     f1 = rows(args.run_dir, "f1", "control_moving")
@@ -86,7 +86,7 @@ def main() -> None:
     ax.set(xlim=(-580, 1730), ylim=(-610, 710),
            xlabel="x in shared formation frame (mm)",
            ylabel="y in shared formation frame (mm)",
-           title=f"2026-10-29 {args.run_dir.name} | planned route, logged MPU poses, and rover footprints")
+           title=f"2026-10-29 {args.run_dir.name} | planned route, estimated MPU-anchor poses, and rover footprints")
     ax.set_aspect("equal", adjustable="box")
     ax.grid(alpha=0.16)
     handles, labels = ax.get_legend_handles_labels()
@@ -96,10 +96,17 @@ def main() -> None:
     labels.append("Rover outline + MPU coordinate")
     fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.075),
                ncol=4, fontsize=9, frameon=False)
-    fig.text(0.5, 0.035,
-             "Body 250 × 150 mm: MPU to nose +100 mm, to tail −150 mm, left/right ±75 mm. "
-             + args.note, ha="center", fontsize=8.7)
-    fig.subplots_adjust(bottom=0.20, top=0.92)
+    fig.text(0.5, 0.045,
+             "Body 250 × 150 mm: MPU to nose +100 mm, tail −150 mm, left/right ±75 mm. "
+             "Map positions are onboard odometry, not camera ground truth.",
+             ha="center", fontsize=8.8)
+    note = args.note
+    if note is None and args.run_dir.name == "real_run_084014Z":
+        note = "Final video: F1 and Leader nearly touch, while CSV body outlines remain about 203 mm apart. See final_spacing_check.png."
+    if note:
+        fig.text(0.5, 0.019, note, ha="center", fontsize=9,
+                 color="#a33455" if args.run_dir.name == "real_run_084014Z" else "#3f4a55")
+    fig.subplots_adjust(bottom=0.21, top=0.92)
     output = args.output or args.run_dir / "target_vs_odometry.png"
     fig.savefig(output, dpi=180)
     print(output)

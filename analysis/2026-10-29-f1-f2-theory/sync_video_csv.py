@@ -130,9 +130,11 @@ def main() -> None:
         ax_map.grid(alpha=0.16)
     capture.release()
     fig.suptitle("Same moments: camera image vs planned route, controller targets, and onboard odometry", fontsize=15)
+    note = (" At the final frame, F1 and Leader appear nearly touching, while CSV predicts ~203 mm body gap."
+            if args.run_dir.name == "real_run_084014Z" else "")
     fig.text(0.5, 0.018,
-             "Map: solid = onboard MPU pose; dot = MPU coordinate; dashed body = 250 × 150 mm (+100 nose / −150 tail).\n"
-             "Dashed paths = plan/targets; x = current target. Video has no ground calibration; time match assumes phone/Pi clocks agree.",
+             "Map: solid = onboard odometry at MPU anchor; dot = MPU coordinate; dashed body = 250 × 150 mm (+100 nose / −150 tail).\n"
+             "Dashed paths = plan/targets; x = current target. Video is uncalibrated; time match assumes phone/Pi clocks agree." + note,
              ha="center", va="center", fontsize=8.5)
     fig.tight_layout(rect=(0, 0.05, 1, 0.97), h_pad=2.2)
     output = args.run_dir / "video_csv_sync.png"

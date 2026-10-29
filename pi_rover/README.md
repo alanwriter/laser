@@ -182,9 +182,8 @@ stale frames, a nonzero `fault_code`, or a non-ready leader; it must stop itself
 when frames time out. UDP is intentionally optional: without `--broadcast`,
 the exact same frames are printed to stdout for logging and test.
 
-For follower *i* with a desired fixed formation offset `(d_x, d_y)` expressed
-in the Leader body frame, calculate the target in world coordinates from the
-measured leader state:
+The earlier F1 experiment used a fixed `(d_x, d_y)` in the current Leader body
+frame and calculated its target from the measured leader state:
 
 ```text
 theta = heading_deg × π / 180
@@ -193,10 +192,12 @@ y_i* = y_leader + sin(theta) d_x + cos(theta) d_y
 theta_i* = theta
 ```
 
-This is a leader–follower rigid-formation reference generator: it compensates
-for the Leader's actual pose drift before commands reach the followers. Each
-follower should perform its own local pose control and never forward raw motor
-commands received over UDP.
+This moving target is retained as the `FormationTracker` legacy implementation
+for replaying the A/B experiment. In normal-follow `0.1.0`, both followers
+instead use `PathFormationTracker`: their desired progress is `s_L−400 mm`,
+their routes are translated `+400/-400 mm` in the Leader's initial frame, and
+their desired headings are their own route tangents. Each follower controls
+its own motors locally; Leader packets never contain PWM commands.
 
 Firmware `PATH 1` and `PATH 2` remain useful built-in diagnostics. For new
 paths, Pi computes a high-level steering correction and repeatedly sends
@@ -211,16 +212,16 @@ explicit `--leader-host`; it never accepts PWM over the network. It maps F1's
 locally reset odometry frame into the shared experiment frame, then sends
 short `VELOCITY` targets to F1's calibrated Nano controller.
 
-For the first test, align both cars with the same heading and place F1 exactly
+Align both cars with the same heading and place F1 exactly
 400 mm rearward and 400 mm to Leader's left. The default F1 target and origin
 are both `(-400 mm, +400 mm)` in the Leader's initial frame: a left-rear,
 45-degree formation with 565.7 mm Leader-to-F1 separation. Keep a clear 2 m
 by 1.5 m lane, physical motor-power cutoffs, and two SSH terminals.
 
 ```bash
-# F1 terminal: this performs the explicit stationary calibration and lifted
-# wheel encoder test, then waits for the FOLLOWER-1 confirmation. It remains
-# stopped until Leader starts publishing a ready, moving pose.
+# F1 terminal: stationary gyro calibration, short motor/encoder preflight,
+# then FOLLOWER-1 at the final start pose. See RUNBOOK for the selected
+# on-ground preflight procedure.
 cd ~/pi_rover
 python3 follower_formation.py \
   --port /dev/serial/by-id/<F1-Nano裝置名稱> \
@@ -244,14 +245,14 @@ position; this resets F1 odometry at the declared formation pose. Then type
 before broadcast and motion. F1 begins only after three fresh Leader frames whose
 IMU/encoder/fault checks pass and whose mode is `velocity` or `path`.
 
-F1 uses a polar outer loop to the left-rear virtual target: `rho` is target
-distance, `alpha` is target bearing from F1's forward direction, and `beta`
-closes target heading. The first run limits F1 to 45 mm/s and does not reverse
-or pivot on its own. A large bearing error instead uses a bounded 12 mm/s
-forward reacquisition arc. A packet older than 0.35 s, stopped/faulted Leader,
+F1 follows the left translated route. Along-route progress error adjusts speed;
+cross-track and tangent-heading errors adjust steering, with curvature
+feed-forward and a bend-speed limit. It neither reverses nor pivots on its own.
+A packet older than 0.35 s, missing/malformed path, stopped/faulted Leader,
 F1 fault, serial loss, Ctrl-C, normal process exit, Leader distance below
 150 mm or above 1200 mm, or target error above 800 mm sends F1 `STOP` and
-requires a new arm.
+requires a new arm. `python3 follower_formation.py --version` reports the
+normal-follow software version.
 
 Changing laboratories or switching to the vehicles' own Wi-Fi needs no code
 change: join all Pi devices to that same local network, then replace only
@@ -260,13 +261,14 @@ stay `239.42.0.1:5005`; it is not a public Internet service.
 
 ## Follower 2 formation controller
 
-`follower2_formation.py` reuses the F1 controller and its safety contract,
-but its defaults place F2 400 mm rearward and 400 mm to Leader's right:
-`(-400 mm, -400 mm)` in the Leader body frame. This is the right-rear
-45-degree mirror of F1, also 565.7 mm from Leader. Align F2's heading to
-Leader before arming it, then place its centre exactly at that right-rear
-location. Its local Nano RESET is deliberately performed only after that
-placement.
+`follower2_formation.py` uses the same path controller and safety contract as
+F1. F2 starts at `(-400, -400)` mm in the
+Leader's initial frame. Its route is the Leader's planned eased-sine route
+translated 400 mm right; its reference progress is 400 mm behind Leader in
+path arc length. F2 steers toward its own path tangent and slows where
+curvature exceeds its yaw-rate or wheel-speed capacity. Align F2's heading to Leader before
+arming it, then place it at the right-rear start position. RESET occurs only
+after placement.
 
 ```bash
 # F2 terminal. This stays stopped through calibration, wheel test and arming
@@ -280,6 +282,9 @@ python3 follower2_formation.py \
 ```
 
 Type `FOLLOWER-2` only after F2 is physically in the right-rear position.
+Both followers require a valid `eased_sine_v1` path in the Leader's `wave`
+broadcasts; without it they stay stopped. The firmware `leader 1/2` PATH modes
+do not publish this path and are not supported by normal-follow `0.1.0`.
 Leader sends one direct UDP datagram to each Follower Pi; each process opens
 only its own Nano USB port and writes a separate `follower2_<UTC timestamp>.csv`
 log.

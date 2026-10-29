@@ -1,5 +1,6 @@
 """Protocol-only tests; they do not open a serial port or command motors."""
 
+import math
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,6 +13,7 @@ from leader_formation import (
     parse_status_fields,
     wave_control,
 )
+from wave_path import WavePath, WavePathReference
 
 
 STATUS = (
@@ -21,6 +23,20 @@ STATUS = (
 
 
 class LeaderProtocolTests(unittest.TestCase):
+    def test_transmitted_wave_geometry_matches_existing_leader_planner(self) -> None:
+        plan = WavePlan()
+        path = WavePath(WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0))
+        origin_fields = list(STATUS)
+        origin_fields[1:4] = ["0.0", "0.0", "0.0"]
+        origin = parse_status_fields(origin_fields)
+        for x in (0.0, 100.0, 250.0, 500.0, 750.0, 1000.0, 1250.0, 1500.0):
+            y, slope, _ = path.shape(x)
+            fields = list(origin_fields)
+            fields[1:4] = [str(x), str(y), str(math.degrees(math.atan(slope)))]
+            control = wave_control(parse_status_fields(fields), origin, plan)
+            self.assertAlmostEqual(control.desired_lateral_mm, y, places=5)
+            self.assertAlmostEqual(control.heading_error_deg, 0.0, places=5)
+
     def test_wave_cli_defaults_to_short_route_and_no_endpoint_chase(self) -> None:
         args = build_parser().parse_args(["wave", "--unlock"])
         self.assertEqual(args.length_mm, 1500.0)

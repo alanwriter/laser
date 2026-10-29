@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Follower-2 right-rear formation entry point.
+"""Follower-2 path-following entry point.
 
-This intentionally reuses the F1 controller, packet validation, Nano safety
-gates and CSV schema.  F2 differs only in its declared Leader-body target and
-RESET origin: (-400, -400) mm, i.e. 400 mm behind and 400 mm right of Leader.
+F2 starts at (-400, -400) mm. It follows a copy of Leader's planned route
+translated 400 mm right and tracks a 400 mm gap along the route. Packet
+handling, Nano commissioning, and safety gates remain shared with F1.
 """
 
 from follower_formation import FOLLOWER_2, main

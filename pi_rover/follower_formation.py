@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Safe Follower-1 formation controller for the shared Nano USB protocol.
+"""Safe formation controller for the shared Nano USB protocol.
 
 The Leader broadcasts its measured pose as UDP JSON.  This process owns only
-Follower 1's Nano USB port: it validates each leader packet, computes the F1
-target at a fixed Leader-body offset, and sends short ``VELOCITY`` setpoints.
+its own Nano USB port: it validates each leader packet, follows the translated
+planned path, and sends short ``VELOCITY`` setpoints.
 No packet can carry a raw PWM command.  A stale/unsafe packet, serial failure,
 fault, signal, or ordinary program exit sends F1 ``STOP``.
 """
@@ -39,14 +39,16 @@ from leader_formation import (
     resolve_port,
     wrap_degrees,
 )
+from wave_path import WavePath, WavePathReference
 
 
 ACTIVE_LEADER_MODES = frozenset({"velocity", "path"})
+NORMAL_FOLLOW_VERSION = "0.1.0"
 
 
 @dataclass(frozen=True)
 class FollowerProfile:
-    """Identity and default Leader-body formation pose for one follower Pi."""
+    """Identity and default start/path offset for one follower Pi."""
 
     short_name: str
     confirmation_token: str
@@ -56,11 +58,11 @@ class FollowerProfile:
     offset_y_mm: float
     commissioning_pwm: int
     commissioning_duration_ms: int
+    path_following: bool = False
 
 
-# F1 and F2 use one tested controller implementation.  Their only formation
-# difference at this stage is the side of the Leader body frame on which each
-# Nano RESET origin and virtual target are placed.
+# Both followers use the same path controller with mirrored lateral offsets.
+# The old Leader-body tracker remains available for analysis of past runs.
 FOLLOWER_1 = FollowerProfile(
     short_name="F1",
     confirmation_token="FOLLOWER-1",
@@ -70,6 +72,7 @@ FOLLOWER_1 = FollowerProfile(
     offset_y_mm=400.0,
     commissioning_pwm=80,
     commissioning_duration_ms=800,
+    path_following=True,
 )
 FOLLOWER_2 = FollowerProfile(
     short_name="F2",
@@ -83,22 +86,20 @@ FOLLOWER_2 = FollowerProfile(
     # not use that faster F1-only commissioning setting on F2.
     commissioning_pwm=40,
     commissioning_duration_ms=400,
+    path_following=True,
 )
 
 
 @dataclass(frozen=True)
 class FormationPlan:
-    """Left-rear target pose and conservative Leader-frame tracking limits.
+    """Follower start/offset geometry and conservative tracking limits.
 
-    ``offset_*`` is expressed in the Leader body frame.  ``follower_start_*``
-    maps F1's freshly RESET Nano frame into the same experiment frame as the
-    Leader.  The defaults mean 400 mm rearward (-x) and 400 mm leftward (+y):
-    F1 starts at Leader's left-rear 45-degree position, 565.7 mm away.
+    For path tracking, ``offset_x_mm`` is the along-route gap and
+    ``offset_y_mm`` is the route translation in the initial Leader frame.
+    ``follower_start_*`` maps each freshly RESET Nano frame into that frame.
 
-    The outer loop separates longitudinal, lateral and heading errors in the
-    Leader body frame.  F1 therefore does not turn directly towards a moving
-    point that it has just passed.  The Nano remains the owner of wheel-speed
-    PID/PWM.
+    The legacy Leader-body tracker also uses this plan when replaying old
+    experiments. The Nano remains the owner of wheel-speed PID/PWM.
     """
 
     offset_x_mm: float = -400.0
@@ -144,6 +145,7 @@ class LeaderFrame:
     yaw_rate_radians_per_second: float = 0.0
     has_motion_reference: bool = False
     formation_phase: str = "moving"
+    path: WavePathReference | None = None
 
 
 @dataclass(frozen=True)
@@ -181,6 +183,9 @@ FOLLOWER_LOG_FIELDS = (
     "leader_motion_yaw_rate_radians_per_second",
     "leader_has_motion_reference",
     "leader_formation_phase",
+    "leader_path_kind",
+    "leader_path_progress_s_mm",
+    "leader_path_length_mm",
     *(f"leader_{name}" for name in FOLLOWER_LOG_STATUS_COLUMNS),
     *(f"follower_{name}" for name in FOLLOWER_LOG_STATUS_COLUMNS),
     *(f"control_{name}" for name in FOLLOWER_LOG_CONTROL_COLUMNS),
@@ -225,6 +230,12 @@ class FollowerCsvLogger:
                 "leader_has_motion_reference": int(leader.has_motion_reference),
                 "leader_formation_phase": leader.formation_phase,
             })
+            if leader.path is not None:
+                row.update({
+                    "leader_path_kind": "eased_sine_v1",
+                    "leader_path_progress_s_mm": leader.path.progress_s_mm,
+                    "leader_path_length_mm": leader.path.length_mm,
+                })
             row.update({f"leader_{name}": value for name, value in asdict(leader.status).items()})
         if follower:
             row.update({f"follower_{name}": value for name, value in asdict(follower).items()})
@@ -284,6 +295,7 @@ def parse_leader_frame(payload: bytes, source_host: str, received_at: float) -> 
         formation_phase = frame.get("formation_phase", "moving")
         if formation_phase not in {"moving", "settle", "stopped"}:
             raise ValueError("unrecognized formation phase")
+        path = WavePathReference.from_payload(frame["path"]) if "path" in frame else None
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         raise ValueError(f"invalid leader packet: {error}") from error
     return LeaderFrame(
@@ -294,6 +306,7 @@ def parse_leader_frame(payload: bytes, source_host: str, received_at: float) -> 
         yaw_rate_radians_per_second=yaw_rate_radians_per_second,
         has_motion_reference=has_motion_reference,
         formation_phase=formation_phase,
+        path=path,
     )
 
 
@@ -595,6 +608,137 @@ class FormationTracker:
         )
 
 
+class PathFormationTracker(FormationTracker):
+    """A translated path, offset behind Leader in path arc length.
+
+    The lateral translation is in the Leader's initial frame. The longitudinal
+    gap is measured along the route. Heading is the tangent of the follower's
+    own path, rather than the instantaneous Leader heading.
+    """
+
+    def __init__(self, plan: FormationPlan) -> None:
+        super().__init__(plan)
+        self._path: WavePath | None = None
+
+    def control(self, leader: LeaderFrame, follower: RoverStatus) -> FormationControl:
+        if leader.path is None or not leader.has_motion_reference:
+            raise ValueError("path follower requires a wave path and motion reference")
+        if self._path is not None and self._path.reference.geometry_key != leader.path.geometry_key:
+            raise ValueError("follower wave path changed during a run")
+        if self._path is None:
+            self._path = WavePath(leader.path)
+        path = self._path
+        assert path is not None
+
+        # Offset X is an along-route gap; offset Y is a translation in the
+        # experiment's initial frame.  A translated y(x) route has the same
+        # tangent and curvature as Leader's planned route.
+        target_s = leader.path.progress_s_mm + self.plan.offset_x_mm
+        target_x, target_y, _, _ = path.pose_at_s(target_s, self.plan.offset_y_mm)
+        follower_x, follower_y, follower_heading = self._follower_world_pose(follower)
+        actual_s, signed_cross_track = path.project(
+            follower_x, follower_y, self.plan.offset_y_mm,
+        )
+        _, _, path_heading, curvature = path.pose_at_s(actual_s, self.plan.offset_y_mm)
+        progress_error = target_s - actual_s
+        lateral_error = -signed_cross_track
+        heading_error = wrap_degrees(path_heading - follower_heading)
+        rho = math.hypot(target_x - follower_x, target_y - follower_y)
+        leader_distance = math.hypot(
+            leader.status.x_mm - follower_x,
+            leader.status.y_mm - follower_y,
+        )
+        stop_reason = ""
+        if leader_distance < self.plan.collision_stop_distance_mm:
+            stop_reason = "leader is too close"
+        elif leader_distance > self.plan.max_leader_distance_mm:
+            stop_reason = "leader separation is too large"
+        elif rho > self.plan.max_target_error_mm:
+            stop_reason = "path target error is too large"
+
+        # Progress synchronizes speed; cross-track and tangent errors steer.
+        speed_correction = clamp(0.18 * progress_error, -25.0, 18.0)
+        requested_speed = max(0.0, leader.forward_mm_per_second + speed_correction)
+        if leader.formation_phase == "settle" and rho > self.plan.settle_target_tolerance_mm:
+            requested_speed = clamp(
+                max(requested_speed, self.plan.reacquire_speed_mm_per_second),
+                0.0, self.plan.settle_max_speed_mm_per_second,
+            )
+        # Reserve turn capacity for the route's curvature.  When the path is
+        # too tight at Leader speed, the follower slows and its progress error exposes
+        # the infeasible formation instead of asking Nano for impossible yaw.
+        if abs(curvature) > 1e-9:
+            requested_speed = min(
+                requested_speed,
+                self.plan.max_yaw_rate_radians_per_second / abs(curvature),
+                self.plan.max_wheel_mm_per_second /
+                (1.0 + self.plan.wheel_track_mm * abs(curvature) / 2.0),
+            )
+        forward_speed = clamp(
+            requested_speed * max(0.20, math.cos(math.radians(heading_error))),
+            0.0, self.plan.max_wheel_mm_per_second,
+        )
+        if abs(heading_error) > self.plan.reacquire_bearing_deg:
+            forward_speed = min(forward_speed, self.plan.reacquire_speed_mm_per_second)
+
+        alpha = math.degrees(math.atan2(lateral_error, self.plan.preview_distance_mm))
+        yaw_feedforward = forward_speed * curvature
+        yaw_rate = clamp(
+            yaw_feedforward
+            + self.plan.lateral_gain_radians_per_second_per_radian * math.radians(alpha)
+            + self.plan.heading_gain_radians_per_second_per_radian * math.radians(heading_error),
+            -self.plan.max_yaw_rate_radians_per_second,
+            self.plan.max_yaw_rate_radians_per_second,
+        )
+        yaw_rate = clamp(
+            yaw_rate,
+            self._previous_yaw_rate - self.plan.max_yaw_step_radians_per_second,
+            self._previous_yaw_rate + self.plan.max_yaw_step_radians_per_second,
+        )
+        forward_only_limit = 0.85 * 2.0 * forward_speed / self.plan.wheel_track_mm
+        yaw_rate = clamp(yaw_rate, -forward_only_limit, forward_only_limit)
+        raw_left = forward_speed - self.plan.wheel_track_mm * yaw_rate / 2.0
+        raw_right = forward_speed + self.plan.wheel_track_mm * yaw_rate / 2.0
+        scale = max(
+            1.0, abs(raw_left) / self.plan.max_wheel_mm_per_second,
+            abs(raw_right) / self.plan.max_wheel_mm_per_second,
+        )
+        left = round(raw_left / scale)
+        right = round(raw_right / scale)
+        if self._previous_wheels:
+            old_left, old_right = self._previous_wheels
+            step = self.plan.max_wheel_step_mm_per_second
+            left = round(clamp(left, old_left - step, old_left + step))
+            right = round(clamp(right, old_right - step, old_right + step))
+        # Integer mm/s wheel commands can round a bounded yaw request just
+        # above its limit. Keep the transmitted difference within the limit.
+        max_difference = math.floor(self.plan.max_yaw_rate_radians_per_second * self.plan.wheel_track_mm)
+        if right - left > max_difference:
+            right = left + max_difference
+        elif left - right > max_difference:
+            left = right + max_difference
+        self._previous_wheels = (left, right)
+        self._previous_yaw_rate = yaw_rate
+        return FormationControl(
+            target_x_mm=target_x,
+            target_y_mm=target_y,
+            target_heading_deg=path_heading,
+            target_speed_mm_per_second=leader.forward_mm_per_second,
+            target_yaw_rate_radians_per_second=yaw_feedforward,
+            leader_distance_mm=leader_distance,
+            rho_mm=rho,
+            alpha_deg=alpha,
+            beta_deg=heading_error,
+            longitudinal_error_mm=progress_error,
+            lateral_error_mm=lateral_error,
+            heading_error_deg=heading_error,
+            left_mm_per_second=left,
+            right_mm_per_second=right,
+            tracking_safe=not stop_reason,
+            stop_reason=stop_reason,
+        )
+
+
 def validate_plan(plan: FormationPlan) -> None:
     if not all(abs(value) <= 2000.0 for value in (
         plan.offset_x_mm, plan.offset_y_mm, plan.follower_start_x_mm, plan.follower_start_y_mm,
@@ -673,7 +817,7 @@ def run_follow(
     initial = parse_status_fields(link.request("STATUS").fields)
     if not initial.ready_for_path:
         raise RuntimeError(f"{profile.short_name} RESET did not preserve ready state; refusing formation control.")
-    tracker = FormationTracker(plan)
+    tracker = PathFormationTracker(plan) if profile.path_following else FormationTracker(plan)
     latest: LeaderFrame | None = None
     follower: RoverStatus | None = None
     control: FormationControl | None = None
@@ -688,7 +832,9 @@ def run_follow(
             frame = receiver.receive_latest(plan.control_period_s)
             if frame:
                 latest = frame
-                if leader_is_safe_and_moving(frame):
+                if leader_is_safe_and_moving(frame) and (
+                    not profile.path_following or (frame.path is not None and frame.has_motion_reference)
+                ):
                     consecutive_active_frames += 1
                 elif not leader_is_safe_for_settle(frame):
                     consecutive_active_frames = 0
@@ -697,6 +843,8 @@ def run_follow(
                 leader_is_safe_and_moving(latest)
                 or (leader_is_safe_for_settle(latest) and consecutive_active_frames >= 3)
             )
+            if profile.path_following and latest and (latest.path is None or not latest.has_motion_reference):
+                leader_allowed = False
             if (
                 stale
                 or not latest
@@ -719,7 +867,7 @@ def run_follow(
             control = tracker.control(latest, follower)
             if not control.tracking_safe:
                 logger.record("safety_stop", started_at, latest, follower, control, control.stop_reason)
-                raise RuntimeError(f"F1 formation safety gate: {control.stop_reason}.")
+                raise RuntimeError(f"{profile.short_name} formation safety gate: {control.stop_reason}.")
             if (
                 latest.formation_phase == "settle"
                 and control.rho_mm <= plan.settle_target_tolerance_mm
@@ -752,13 +900,16 @@ def run_follow(
 
 def build_parser(profile: FollowerProfile = FOLLOWER_1) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=f"Safe {profile.display_name} UDP formation controller.")
+    parser.add_argument("--version", action="version", version=f"normal-follow {NORMAL_FOLLOW_VERSION}")
     parser.add_argument("--port", help=f"{profile.short_name} Nano /dev/serial/by-id path; auto-detect only when exactly one exists.")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--listen", default="0.0.0.0:5005", help="local UDP bind endpoint (default 0.0.0.0:5005)")
     parser.add_argument("--leader-host", required=True, help="required source IPv4 address of the Leader Pi")
     parser.add_argument("--multicast-group", help="join this IPv4 multicast group, e.g. 239.42.0.1")
-    parser.add_argument("--offset-x-mm", type=float, default=profile.offset_x_mm, help=f"{profile.short_name} target x in Leader body frame (default -400, rear)")
-    parser.add_argument("--offset-y-mm", type=float, default=profile.offset_y_mm, help=f"{profile.short_name} target y in Leader body frame (default {profile.offset_y_mm:+.0f})")
+    x_help = "along-path gap from Leader in mm" if profile.path_following else "target x in Leader body frame"
+    y_help = "route translation in initial Leader frame, mm" if profile.path_following else "target y in Leader body frame"
+    parser.add_argument("--offset-x-mm", type=float, default=profile.offset_x_mm, help=f"{profile.short_name} {x_help} (default {profile.offset_x_mm:+.0f})")
+    parser.add_argument("--offset-y-mm", type=float, default=profile.offset_y_mm, help=f"{profile.short_name} {y_help} (default {profile.offset_y_mm:+.0f})")
     parser.add_argument("--follower-start-x-mm", type=float, default=profile.offset_x_mm, help=f"{profile.short_name} Nano RESET origin in experiment frame")
     parser.add_argument("--follower-start-y-mm", type=float, default=profile.offset_y_mm, help=f"{profile.short_name} Nano RESET origin in experiment frame")
     parser.add_argument("--follower-start-heading-deg", type=float, default=0.0, help=f"{profile.short_name} initial heading relative to Leader frame")
@@ -814,7 +965,7 @@ def main(profile: FollowerProfile = FOLLOWER_1) -> int:
         link.open()
         run_follow(link, receiver, plan, args.test_pwm, args.test_duration_ms, args.log, profile)
         return 0
-    except (RuntimeError, ProtocolError, serial.SerialException, OSError) as error:
+    except (RuntimeError, ValueError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         link.stop_safely()
         return 1

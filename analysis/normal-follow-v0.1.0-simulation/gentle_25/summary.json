@@ -1,0 +1,50 @@
+{
+  "model": "Ideal differential-drive integration of actual Python wheel commands at 0.1 s; no slip, delay, IMU drift or motor dynamics",
+  "leader_plan": {
+    "length_mm": 1500.0,
+    "lead_in_mm": 0.0,
+    "amplitude_mm": 20.0,
+    "cycles": 2,
+    "cruise_mm_per_second": 25.0,
+    "min_mm_per_second": 18.0,
+    "max_wheel_mm_per_second": 100.0,
+    "heading_gain_radians_per_second_per_radian": 1.5,
+    "max_yaw_rate_radians_per_second": 0.65,
+    "cross_track_lookahead_mm": 260.0,
+    "wheel_track_mm": 130.0,
+    "completion_lateral_tolerance_mm": 50.0,
+    "completion_heading_tolerance_deg": 12.0,
+    "max_finish_overrun_mm": 400.0,
+    "command_ms": 180,
+    "control_period_s": 0.1,
+    "max_runtime_s": 180.0,
+    "formation_settle_s": 0.0
+  },
+  "leader_result": "completed",
+  "duration_s": 62.3,
+  "leader_final_x_mm": 1501.73,
+  "leader_final_y_mm": 0.09,
+  "f1_path_progress": {
+    "active_samples": 622,
+    "median_target_error_mm": 0.45,
+    "p90_target_error_mm": 2.66,
+    "median_abs_lateral_error_mm": 0.07,
+    "median_abs_path_cross_track_mm": 0.07,
+    "median_abs_longitudinal_or_progress_error_mm": 0.18,
+    "final_target_error_mm": 1.75,
+    "fraction_abs_commanded_yaw_at_least_0_23_rad_s": 0.0,
+    "stopped_by_safety": null
+  },
+  "f2_new_path_progress": {
+    "active_samples": 622,
+    "median_target_error_mm": 0.45,
+    "p90_target_error_mm": 2.66,
+    "median_abs_lateral_error_mm": 0.07,
+    "median_abs_path_cross_track_mm": 0.07,
+    "median_abs_longitudinal_or_progress_error_mm": 0.18,
+    "final_target_error_mm": 1.75,
+    "fraction_abs_commanded_yaw_at_least_0_23_rad_s": 0.0,
+    "stopped_by_safety": null
+  },
+  "controller_mode": "normal-follow-v0.1.0"
+}

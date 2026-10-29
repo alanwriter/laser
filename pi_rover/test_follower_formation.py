@@ -7,9 +7,11 @@ import unittest
 from pathlib import Path
 
 from follower_formation import (
+    FOLLOWER_1,
     FOLLOWER_2,
     FormationPlan,
     FormationTracker,
+    PathFormationTracker,
     FollowerCsvLogger,
     LeaderFrame,
     build_parser,
@@ -18,7 +20,8 @@ from follower_formation import (
     leader_is_safe_and_moving,
     parse_leader_frame,
 )
-from leader_formation import RoverStatus
+from leader_formation import RoverStatus, leader_state_payload
+from wave_path import WavePath, WavePathReference
 
 
 def status(**changes: object) -> RoverStatus:
@@ -34,6 +37,100 @@ def status(**changes: object) -> RoverStatus:
 
 
 class FollowerFormationTests(unittest.TestCase):
+    def test_leader_wave_packet_is_read_by_both_controllers(self) -> None:
+        reference = WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0, 250.0)
+        payload = json.dumps(leader_state_payload(status(), 45.0, 0.0, path=reference)).encode()
+        parsed = parse_leader_frame(payload, "192.168.1.166", 1.0)
+        self.assertIsNotNone(parsed.path)
+        self.assertEqual(parsed.path.progress_s_mm, 250.0)
+        old = FormationTracker(FormationPlan()).control(parsed, status())
+        self.assertTrue(old.tracking_safe)
+        new = PathFormationTracker(FormationPlan(
+            offset_x_mm=-400.0, offset_y_mm=-400.0,
+            follower_start_x_mm=-400.0, follower_start_y_mm=-400.0,
+        )).control(parsed, status())
+        self.assertTrue(new.tracking_safe)
+        self.assertGreaterEqual(new.left_mm_per_second, 0)
+        self.assertGreaterEqual(new.right_mm_per_second, 0)
+
+    def test_f1_wheel_commands_are_unchanged_by_new_path_field(self) -> None:
+        reference = WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0, 100.0)
+        old_frame = LeaderFrame(status(x_mm=100.0, heading_deg=10.0), 1.0, "192.168.1.166", 45.0, 0.1, True)
+        new_frame = LeaderFrame(status(x_mm=100.0, heading_deg=10.0), 1.0, "192.168.1.166", 45.0, 0.1, True, "moving", reference)
+        follower = status()
+        old_control = FormationTracker(FormationPlan()).control(old_frame, follower)
+        new_control = FormationTracker(FormationPlan()).control(new_frame, follower)
+        self.assertEqual(old_control, new_control)
+
+    def test_f2_rejects_missing_or_malformed_path(self) -> None:
+        tracker = PathFormationTracker(FormationPlan(offset_y_mm=-400.0))
+        with self.assertRaisesRegex(ValueError, "requires a wave path"):
+            tracker.control(LeaderFrame(status(), 1.0, "192.168.1.166"), status())
+        packet = leader_state_payload(status(), 45.0)
+        packet["path"] = {"kind": "eased_sine_v1", "length_mm": float("nan")}
+        with self.assertRaisesRegex(ValueError, "invalid leader packet"):
+            parse_leader_frame(json.dumps(packet).encode(), "192.168.1.166", 1.0)
+
+    def test_f2_route_heading_is_tangent_at_its_own_progress(self) -> None:
+        base = WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0)
+        path = WavePath(base)
+        progress = path.s_at_x(600.0)
+        reference = WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0, progress)
+        leader_x, leader_y, leader_heading, _ = path.pose_at_s(progress)
+        target_x, target_y, target_heading, _ = path.pose_at_s(progress - 400.0, -400.0)
+        frame = LeaderFrame(
+            status(x_mm=leader_x, y_mm=leader_y, heading_deg=leader_heading),
+            1.0, "192.168.1.166", 45.0, 0.0, True, "moving", reference,
+        )
+        follower = status(
+            x_mm=target_x + 400.0, y_mm=target_y + 400.0,
+            heading_deg=target_heading,
+        )
+        tracker = PathFormationTracker(FormationPlan(
+            offset_x_mm=-400.0, offset_y_mm=-400.0,
+            follower_start_x_mm=-400.0, follower_start_y_mm=-400.0,
+        ))
+        control = tracker.control(frame, follower)
+        self.assertLess(control.rho_mm, 0.01)
+        self.assertLess(abs(control.heading_error_deg), 0.01)
+        self.assertGreater(abs(control.target_heading_deg - leader_heading), 5.0)
+
+    def test_normal_follow_profiles_use_mirrored_path_tangents(self) -> None:
+        self.assertTrue(FOLLOWER_1.path_following)
+        self.assertTrue(FOLLOWER_2.path_following)
+        base = WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0)
+        route = WavePath(base)
+        progress = route.s_at_x(600.0)
+        reference = WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0, progress)
+        leader_x, leader_y, _, _ = route.pose_at_s(progress)
+        # A deliberately incorrect Leader heading must not rotate either path target.
+        frame = LeaderFrame(
+            status(x_mm=leader_x, y_mm=leader_y, heading_deg=45.0),
+            1.0, "192.168.1.166", 45.0, 0.0, True, "moving", reference,
+        )
+        controls = []
+        for profile in (FOLLOWER_1, FOLLOWER_2):
+            plan = FormationPlan(
+                offset_x_mm=profile.offset_x_mm,
+                offset_y_mm=profile.offset_y_mm,
+                follower_start_x_mm=profile.offset_x_mm,
+                follower_start_y_mm=profile.offset_y_mm,
+            )
+            target_x, target_y, tangent, _ = route.pose_at_s(
+                progress + profile.offset_x_mm, profile.offset_y_mm,
+            )
+            follower = status(
+                x_mm=target_x - profile.offset_x_mm,
+                y_mm=target_y - profile.offset_y_mm,
+                heading_deg=tangent,
+            )
+            control = PathFormationTracker(plan).control(frame, follower)
+            self.assertLess(control.rho_mm, 0.01)
+            self.assertAlmostEqual(control.target_heading_deg, tangent, delta=0.01)
+            self.assertGreater(abs(control.target_heading_deg - frame.status.heading_deg), 5.0)
+            controls.append(control)
+        self.assertAlmostEqual(controls[0].target_y_mm - controls[1].target_y_mm, 800.0)
+
     def test_follower_2_profile_is_right_rear_with_matching_reset_origin(self) -> None:
         args = build_parser(FOLLOWER_2).parse_args([
             "--leader-host", "192.168.1.166", "--unlock",

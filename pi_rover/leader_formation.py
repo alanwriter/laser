@@ -19,11 +19,13 @@ import signal
 import socket
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
 import serial
+
+from wave_path import WavePath, WavePathReference
 
 
 BAUD = 115200
@@ -443,6 +445,29 @@ def require_confirmation(expected: str, message: str) -> None:
         raise RuntimeError("Confirmation did not match; no movement command was sent.")
 
 
+def leader_state_payload(
+    status: RoverStatus,
+    forward_mm_per_second: float = 0.0,
+    yaw_rate_radians_per_second: float = 0.0,
+    formation_phase: str = "moving",
+    path: WavePathReference | None = None,
+) -> dict[str, object]:
+    frame: dict[str, object] = {
+        "type": "leader_state",
+        "version": 1,
+        "monotonic_s": round(time.monotonic(), 3),
+        "status": asdict(status),
+        "motion": {
+            "forward_mm_per_second": round(forward_mm_per_second, 3),
+            "yaw_rate_radians_per_second": round(yaw_rate_radians_per_second, 5),
+        },
+        "formation_phase": formation_phase,
+    }
+    if path is not None:
+        frame["path"] = path.to_payload()
+    return frame
+
+
 class LeaderPublisher:
     """Publish the actual leader pose; follower controllers own their own motors."""
 
@@ -474,18 +499,12 @@ class LeaderPublisher:
         forward_mm_per_second: float = 0.0,
         yaw_rate_radians_per_second: float = 0.0,
         formation_phase: str = "moving",
+        path: WavePathReference | None = None,
     ) -> None:
-        frame = {
-            "type": "leader_state",
-            "version": 1,
-            "monotonic_s": round(time.monotonic(), 3),
-            "status": asdict(status),
-            "motion": {
-                "forward_mm_per_second": round(forward_mm_per_second, 3),
-                "yaw_rate_radians_per_second": round(yaw_rate_radians_per_second, 5),
-            },
-            "formation_phase": formation_phase,
-        }
+        frame = leader_state_payload(
+            status, forward_mm_per_second, yaw_rate_radians_per_second,
+            formation_phase, path,
+        )
         encoded = json.dumps(frame, separators=(",", ":")).encode("utf-8")
         if self.sock:
             for destination in self.destinations:
@@ -627,6 +646,16 @@ def run_wave(
     origin = parse_status_fields(link.request("STATUS").fields)
     if not origin.ready_for_path:
         raise RuntimeError("RESET did not preserve a ready Nano state; refusing to move.")
+    path_base = WavePathReference(
+        length_mm=plan.length_mm,
+        lead_in_mm=plan.lead_in_mm,
+        amplitude_mm=plan.amplitude_mm,
+        cycles=plan.cycles,
+        origin_x_mm=origin.x_mm,
+        origin_y_mm=origin.y_mm,
+        origin_heading_deg=origin.heading_deg,
+    )
+    path_geometry = WavePath(path_base)
     publisher = LeaderPublisher(broadcast)
     started_at = time.monotonic()
     current = origin
@@ -651,6 +680,10 @@ def run_wave(
                 current,
                 (control.left_mm_per_second + control.right_mm_per_second) / 2.0,
                 (control.right_mm_per_second - control.left_mm_per_second) / plan.wheel_track_mm,
+                path=replace(
+                    path_base,
+                    progress_s_mm=path_geometry.s_at_x(clamp(control.forward_mm, 0.0, plan.length_mm)),
+                ),
             )
             logger.record("control", current, time.monotonic() - started_at, control)
             print(
@@ -667,16 +700,20 @@ def run_wave(
             ):
                 link.stop_safely()
                 final = parse_status_fields(link.request("STATUS").fields)
+                final_progress = path_geometry.s_at_x(clamp(
+                    wave_control(final, origin, plan).forward_mm, 0.0, plan.length_mm,
+                ))
+                final_path = replace(path_base, progress_s_mm=final_progress)
                 # Keep the Leader still but continue broadcasting a bounded
                 # settle phase.  This lets a lagging F1 close its final
                 # relative-pose error instead of stopping the instant Leader
                 # reaches its endpoint.
                 settle_started_at = time.monotonic()
                 while time.monotonic() - settle_started_at < plan.formation_settle_s:
-                    publisher.publish(final, formation_phase="settle")
+                    publisher.publish(final, formation_phase="settle", path=final_path)
                     logger.record("settle", final, time.monotonic() - started_at, control)
                     time.sleep(plan.control_period_s)
-                publisher.publish(final, formation_phase="stopped")
+                publisher.publish(final, formation_phase="stopped", path=final_path)
                 logger.record("completed", final, time.monotonic() - started_at, control)
                 print_status(final)
                 print("Wave completed. Nano is stopped.")

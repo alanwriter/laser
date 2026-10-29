@@ -26,9 +26,15 @@
   `07:47:46Z` 完成；F1/F2 均 STOP，三台控制程序已退出。F2 首筆移動航向 0.0°；
   F1/F2 車上估計的目標距離中位數為 245/52 mm。影片只有斜視畫面，尚無毫米級
   地面真值，不能把車上里程計誤差當作實際地面誤差。
-- `normal-follow/v0.1.0` 是**本地候選版本**：F1/F2 程式設定都使用各自路徑
+- `normal-follow/v0.1.0` 是**GitHub 分支上的候選版本**：F1/F2 程式設定都使用各自路徑
   切線的跟隨器；F1 Pi 尚未部署這版。實車校正順序見 `pi_rover/CALIBRATION_PLAN.md`。
   前述實跑 CSV 仍是 F1 舊／F2 新的歷史資料，不能當成雙新控制器的實測。
+- 新版路徑跟隨器用 `s_F=s_L−400 mm`；Leader 剛轉彎時 F2 仍在自己車道的
+  起點後方直線延伸段，**不是等 Leader 姿態穩定**。擬議 Leader 路徑仍保留
+  `length_mm=1500` 前進範圍，改為 `lead_in=250`、`amplitude=50`、`cycles=1`；
+  理論比較見 `analysis/2026-10-29-f1-f2-theory/route_candidate_1500/README.md`。
+  這只是離線候選，未改實車 RUNBOOK 或部署；更緩的路徑不能修復前述里程計
+  與影片相對間距不一致。
 - 同日第三趟 `08:40:14Z` 已完成，三台均收到 STOP、控制程序退出。完整影片
   `IMG_8103.MOV` 只有最後 40 秒是行駛；對時圖與結論見
   `analysis/2026-10-29-f1-f2-theory/real_run_084014Z/video_csv_findings.md`。

@@ -22,6 +22,11 @@
 - `normal-follow/v0.1.0` 是**本地候選版本**：F1/F2 程式設定都使用各自路徑
   切線的跟隨器；F1 Pi 尚未部署這版。實車校正順序見 `pi_rover/CALIBRATION_PLAN.md`。
   前述兩趟 CSV 仍是 F1 舊／F2 新的歷史資料，不能當成雙新控制器的實測。
+- 最新一次「重跑並拍完整影片」於 2026-10-29 預檢中止：F1 接地 PWM 80／800 ms
+  左右 count 1878／396、航向 −120.2°；使用者確認右輪明顯較慢或卡住。三台
+  均已送 STOP ACK，沒有送 `FOLLOWER-1`／`FOLLOWER-2`／`WAVE-3`。
+  詳見 `analysis/2026-10-29-f1-f2-theory/preflight_abort_f1_right_wheel.md`。
+  **下次先檢查 F1 右輪，不要把這次預檢旗標通過當成可以直接出發。**
 
 ## 使用者偏好的試跑節奏
 

@@ -1,0 +1,85 @@
+{
+  "unit_note": "Wheel mm/s uses current 65 mm Nano diameter, not ground truth.",
+  "runs": {
+    "1 m precise": {
+      "left": {
+        "n_time_correlated_samples": 218,
+        "median_command_mm_s": 18.0,
+        "median_measured_mm_s": 33.56,
+        "median_pwm": 43.0
+      },
+      "right": {
+        "n_time_correlated_samples": 218,
+        "median_command_mm_s": 18.01,
+        "median_measured_mm_s": 33.38,
+        "median_pwm": 43.0
+      }
+    },
+    "2 m repeat": {
+      "left": {
+        "n_time_correlated_samples": 337,
+        "median_command_mm_s": 24.01,
+        "median_measured_mm_s": 50.33,
+        "median_pwm": 42.0
+      },
+      "right": {
+        "n_time_correlated_samples": 337,
+        "median_command_mm_s": 25.99,
+        "median_measured_mm_s": 50.08,
+        "median_pwm": 45.0
+      }
+    },
+    "1.5 sine": {
+      "left": {
+        "n_time_correlated_samples": 306,
+        "median_command_mm_s": 24.01,
+        "median_measured_mm_s": 50.3,
+        "median_pwm": 43.0
+      },
+      "right": {
+        "n_time_correlated_samples": 306,
+        "median_command_mm_s": 25.99,
+        "median_measured_mm_s": 50.08,
+        "median_pwm": 45.0
+      }
+    }
+  },
+  "transient_inverse": {
+    "left": [
+      {
+        "measured_nominal_mm_s": 50.35,
+        "pwm": 45
+      },
+      {
+        "measured_nominal_mm_s": 67.12,
+        "pwm": 50
+      },
+      {
+        "measured_nominal_mm_s": 83.87,
+        "pwm": 55
+      },
+      {
+        "measured_nominal_mm_s": 100.71,
+        "pwm": 60
+      }
+    ],
+    "right": [
+      {
+        "measured_nominal_mm_s": 50.1,
+        "pwm": 45
+      },
+      {
+        "measured_nominal_mm_s": 75.14,
+        "pwm": 50
+      },
+      {
+        "measured_nominal_mm_s": 100.15,
+        "pwm": 55
+      },
+      {
+        "measured_nominal_mm_s": 116.8,
+        "pwm": 60
+      }
+    ]
+  }
+}

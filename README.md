@@ -1,5 +1,7 @@
 # 綠色 X 雷射自動指向系統（Mac 端）
 
+同一倉庫另有三車編隊、LiDAR 與歷史資料；入口與版本說明見 [專案地圖](PROJECT_MAP.md)。
+
 本專案用 USB／iPhone 攝影機觀察印有綠色 X 的紙面，控制既有二軸雷射雲台，讓紅色雷射點逐步接近綠色 X 中心。它處理 Pan/Tilt 軸互相耦合、雲台不水平，以及紅點在紙面上呈弧形移動的情況。
 
 > 這個資料夾只有 Mac 端 Python 程式。它**不會上傳、修改或管理 Nano 韌體**，也沒有雷射開關控制。既有 Nano 韌體只需能從 USB serial 接收一行 `P,T\n`，例如 `155,30`。
@@ -48,6 +50,22 @@ pip install -r requirements.txt
 ```bash
 .venv/bin/python vision_pointer.py --help
 ```
+
+## RPLIDAR S3 即時掃描
+
+Mac 上接入的 RPLIDAR S3M1 使用另一個 USB 序列埠，與本專案的 Nano 雲台無關。
+以瀏覽器即時顯示每一圈的 2D 測距點：
+
+```bash
+.venv/bin/python lidar_live_view.py
+```
+
+預設使用 `/dev/cu.usbserial-1230`、1,000,000 baud。若重新插拔後埠名改變，
+使用 `.venv/bin/python lidar_live_view.py --port /dev/cu.usbserial-XXXX`。
+畫面的「顯示半徑」可縮放；點圖左右鏡像後逆時鐘旋轉 90°，0° 顯示在下方。按「停止雷達」
+或終端 `Ctrl-C` 會送 STOP 並關閉埠。
+僅關閉瀏覽器分頁不會停止掃描；終端會顯示本機 UI 網址。腳本會先讀取型號與
+健康狀態，只接受 S3M1，且網頁僅綁定 Mac 的 `127.0.0.1`。
 
 ## 相機、視窗與黃框
 

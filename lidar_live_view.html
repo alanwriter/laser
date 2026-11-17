@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RPLIDAR S3 即時掃描</title>
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0b1220; color: #e9f1fb; }
+    main { max-width: 1050px; padding: 22px; margin: auto; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; }
+    h1 { font-size: 1.45rem; margin: 0; }
+    .muted { color: #94a9c2; }
+    .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    button, select { border: 1px solid #47627d; color: #e9f1fb; background: #18283c; border-radius: 9px; padding: 8px 12px; font: inherit; }
+    button { cursor: pointer; }
+    button:hover, select:hover { background: #243b56; }
+    #stop { border-color: #9d4a4a; }
+    .panel { margin-top: 18px; border: 1px solid #293d55; border-radius: 14px; background: #111d2e; overflow: hidden; }
+    canvas { display: block; width: 100%; aspect-ratio: 1; max-height: 730px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+    .stat { border: 1px solid #293d55; background: #111d2e; border-radius: 10px; padding: 11px 14px; }
+    .stat strong { display: block; font-size: 1.15rem; margin-top: 5px; }
+    .stat span { font-size: .8rem; color: #94a9c2; }
+    footer { font-size: .82rem; color: #94a9c2; margin-top: 14px; line-height: 1.6; }
+    @media (max-width: 650px) { .stats { grid-template-columns: repeat(2, 1fr); } main { padding: 12px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>RPLIDAR S3 即時掃描</h1>
+        <div id="status" class="muted">等待第一圈資料…</div>
+      </div>
+      <div class="controls">
+        <label for="range">顯示半徑</label>
+        <select id="range">
+          <option value="1">1 m</option><option value="2">2 m</option>
+          <option value="5" selected>5 m</option><option value="10">10 m</option>
+          <option value="20">20 m</option><option value="40">40 m</option>
+        </select>
+        <button id="stop" type="button">停止雷達</button>
+      </div>
+    </header>
+    <div class="panel"><canvas id="scan" aria-label="LiDAR 二維掃描點圖"></canvas></div>
+    <div class="stats">
+      <div class="stat"><span>完整圈數</span><strong id="revolutions">—</strong></div>
+      <div class="stat"><span>本圈量測</span><strong id="samples">—</strong></div>
+      <div class="stat"><span>有效距離</span><strong id="valid">—</strong></div>
+      <div class="stat"><span>最近回波</span><strong id="nearest">—</strong></div>
+    </div>
+    <footer>紅點是 LiDAR；青點是最新一圈的有效回波。畫面左右鏡像後逆時鐘旋轉 90°，0° 朝下；角度尚未對齊車頭。這是雷達高度的 2D 截面。關閉視窗不會停止腳本，請按「停止雷達」或在終端按 Ctrl-C。</footer>
+  </main>
+  <script>
+    const canvas = document.getElementById('scan');
+    const ctx = canvas.getContext('2d');
+    const range = document.getElementById('range');
+    const status = document.getElementById('status');
+    let scan = null, active = true, lastSequence = -1;
+
+    function resize() {
+      const box = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(box.width * dpr));
+      canvas.height = Math.max(1, Math.round(box.height * dpr));
+      draw();
+    }
+
+    function draw() {
+      const w = canvas.width, h = canvas.height, dpr = window.devicePixelRatio || 1;
+      const cx = w / 2, cy = h / 2, radius = Math.min(w, h) * .45;
+      const limit = Number(range.value);
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = '#2b4058'; ctx.lineWidth = dpr;
+      for (let ring = 1; ring <= 4; ring++) {
+        const rr = radius * ring / 4;
+        ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#7892ac'; ctx.font = `${11 * dpr}px sans-serif`;
+        ctx.fillText(`${(limit * ring / 4).toFixed(limit < 2 ? 2 : 1)} m`, cx + 6 * dpr, cy - rr + 14 * dpr);
+      }
+      ctx.beginPath(); ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy);
+      ctx.moveTo(cx, cy - radius); ctx.lineTo(cx, cy + radius); ctx.stroke();
+      if (scan) {
+        ctx.fillStyle = '#39cfe5';
+        for (const [angle, distance] of scan.points) {
+          const r = distance / 1000 / limit * radius;
+          if (r > radius) continue;
+          const a = angle * Math.PI / 180;
+          const x = cx - r * Math.sin(a), y = cy + r * Math.cos(a);
+          ctx.fillRect(x - 1.4 * dpr, y - 1.4 * dpr, 2.8 * dpr, 2.8 * dpr);
+        }
+      }
+      ctx.fillStyle = '#ff6b5e'; ctx.beginPath(); ctx.arc(cx, cy, 5 * dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#9ab0c8'; ctx.font = `${12 * dpr}px sans-serif`;
+      ctx.fillText('0°', cx + 8 * dpr, cy + radius - 8 * dpr);
+      ctx.fillText('90°', cx - radius + 8 * dpr, cy - 8 * dpr);
+      ctx.fillText('180°', cx + 8 * dpr, cy - radius + 16 * dpr);
+      ctx.fillText('270°', cx + radius - 38 * dpr, cy - 8 * dpr);
+    }
+
+    async function poll() {
+      if (!active) return;
+      try {
+        const response = await fetch('/api/scan', {cache: 'no-store'});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.sequence !== lastSequence) { scan = data; lastSequence = data.sequence; draw(); }
+        const age = data.scanned_at ? (Date.now() / 1000 - data.scanned_at) : 0;
+        status.textContent = data.error || (data.sequence ? `${data.model} · 韌體 ${data.firmware} · ${age < 1 ? '掃描中' : `資料延遲 ${age.toFixed(1)} 秒`}` : '等待第一圈資料…');
+        document.getElementById('revolutions').textContent = data.sequence || '—';
+        document.getElementById('samples').textContent = data.samples || '—';
+        document.getElementById('valid').textContent = data.valid || '—';
+        const distances = data.points.map(point => point[1]);
+        document.getElementById('nearest').textContent = distances.length ? `${(Math.min(...distances) / 1000).toFixed(2)} m` : '—';
+      } catch (error) {
+        status.textContent = `連線已結束：${error.message}`;
+      }
+      if (active) setTimeout(poll, 150);
+    }
+
+    range.addEventListener('change', draw);
+    document.getElementById('stop').addEventListener('click', async () => {
+      active = false;
+      status.textContent = '正在停止雷達…';
+      try { await fetch('/api/stop', {method: 'POST'}); status.textContent = '雷達已停止'; }
+      catch { status.textContent = '無法連線，請在終端按 Ctrl-C'; }
+    });
+    new ResizeObserver(resize).observe(canvas);
+    poll();
+  </script>
+</body>
+</html>

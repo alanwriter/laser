@@ -1,0 +1,46 @@
+{
+  "leader_endpoint_mm": [
+    1000,
+    1200
+  ],
+  "leader_route_length_mm": 1856.6,
+  "leader_ideal_duration_s": 61.9,
+  "turn_radius_mm": 800.0,
+  "straight_mm": 200.0,
+  "exit_mm": 400.0,
+  "lanes_mm": {
+    "F1": 400.0,
+    "F2": -400.0
+  },
+  "controller_safety_stops": {},
+  "minimum_simulated_mpu_distance_mm": {
+    "Leader-F1": 486.6,
+    "Leader-F2": 565.6,
+    "F1-F2": 800.0
+  },
+  "minimum_simulated_body_gap_mm": {
+    "Leader-F1": 247.0,
+    "Leader-F2": 286.9,
+    "F1-F2": 649.9
+  },
+  "simulated_body_bounds_mm": [
+    -550.0,
+    -484.2,
+    1479.4,
+    1300.0
+  ],
+  "nominal_plot_area_with_300_mm_margin_each_side_mm": [
+    2629.4,
+    2384.2
+  ],
+  "F1": {
+    "median_target_error_mm": 0.5,
+    "max_target_error_mm": 2.0,
+    "end_target_error_mm": 0.5
+  },
+  "F2": {
+    "median_target_error_mm": 0.5,
+    "max_target_error_mm": 2.0,
+    "end_target_error_mm": 0.7
+  }
+}

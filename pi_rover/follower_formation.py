@@ -30,6 +30,7 @@ from leader_formation import (
     MAX_MOTOR_MS,
     MIN_MOTOR_MS,
     NanoLink,
+    NanoGeometry,
     ProtocolError,
     RoverStatus,
     clamp,
@@ -40,10 +41,11 @@ from leader_formation import (
     wrap_degrees,
 )
 from wave_path import WavePath, WavePathReference
+from turn_path import TurnPath, TurnPathReference
 
 
 ACTIVE_LEADER_MODES = frozenset({"velocity", "path"})
-NORMAL_FOLLOW_VERSION = "0.1.0"
+NORMAL_FOLLOW_VERSION = "0.2.0-dev+left-turn"
 
 
 @dataclass(frozen=True)
@@ -118,9 +120,9 @@ class FormationPlan:
     max_wheel_mm_per_second: float = 75.0
     max_yaw_rate_radians_per_second: float = 0.25
     wheel_track_mm: float = 130.0
-    # Collision is the hard physical-stop condition for this supervised trial.
-    # Pose/bearing errors use the low-speed reacquisition behaviour below.
-    collision_stop_distance_mm: float = 150.0
+    # Stop when estimated Leader-to-follower MPU separation is below this
+    # threshold. Odometry error means this is not a guaranteed body clearance.
+    collision_stop_distance_mm: float = 250.0
     max_target_error_mm: float = 800.0
     max_leader_distance_mm: float = 1200.0
     reacquire_bearing_deg: float = 65.0
@@ -145,7 +147,7 @@ class LeaderFrame:
     yaw_rate_radians_per_second: float = 0.0
     has_motion_reference: bool = False
     formation_phase: str = "moving"
-    path: WavePathReference | None = None
+    path: WavePathReference | TurnPathReference | None = None
 
 
 @dataclass(frozen=True)
@@ -186,6 +188,14 @@ FOLLOWER_LOG_FIELDS = (
     "leader_path_kind",
     "leader_path_progress_s_mm",
     "leader_path_length_mm",
+    "config_left_ticks_per_rev",
+    "config_right_ticks_per_rev",
+    "config_wheel_diameter_mm",
+    "config_wheel_track_mm",
+    "config_heading_gyro_blend",
+    "encoder_left_distance_mm",
+    "encoder_right_distance_mm",
+    "encoder_forward_distance_mm",
     *(f"leader_{name}" for name in FOLLOWER_LOG_STATUS_COLUMNS),
     *(f"follower_{name}" for name in FOLLOWER_LOG_STATUS_COLUMNS),
     *(f"control_{name}" for name in FOLLOWER_LOG_CONTROL_COLUMNS),
@@ -195,13 +205,14 @@ FOLLOWER_LOG_FIELDS = (
 class FollowerCsvLogger:
     """Persist every follower-loop decision without affecting control policy."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, geometry: NanoGeometry | None = None) -> None:
         self.path = path.expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.file = self.path.open("w", encoding="utf-8", newline="")
         self.writer = csv.DictWriter(self.file, fieldnames=FOLLOWER_LOG_FIELDS)
         self.writer.writeheader()
         self.file.flush()
+        self.geometry = geometry
 
     def record(
         self,
@@ -232,13 +243,19 @@ class FollowerCsvLogger:
             })
             if leader.path is not None:
                 row.update({
-                    "leader_path_kind": "eased_sine_v1",
+                    "leader_path_kind": "left_turn_v1" if isinstance(leader.path, TurnPathReference) else "eased_sine_v1",
                     "leader_path_progress_s_mm": leader.path.progress_s_mm,
                     "leader_path_length_mm": leader.path.length_mm,
                 })
             row.update({f"leader_{name}": value for name, value in asdict(leader.status).items()})
         if follower:
             row.update({f"follower_{name}": value for name, value in asdict(follower).items()})
+            if self.geometry is not None:
+                row.update({f"config_{name}": value for name, value in asdict(self.geometry).items()})
+                left_mm, right_mm, forward_mm = self.geometry.wheel_distances_mm(follower)
+                row.update(encoder_left_distance_mm=left_mm,
+                           encoder_right_distance_mm=right_mm,
+                           encoder_forward_distance_mm=forward_mm)
         if control:
             row.update({f"control_{name}": value for name, value in asdict(control).items()})
         self.writer.writerow(row)
@@ -295,7 +312,12 @@ def parse_leader_frame(payload: bytes, source_host: str, received_at: float) -> 
         formation_phase = frame.get("formation_phase", "moving")
         if formation_phase not in {"moving", "settle", "stopped"}:
             raise ValueError("unrecognized formation phase")
-        path = WavePathReference.from_payload(frame["path"]) if "path" in frame else None
+        if "path" in frame:
+            kind = frame["path"].get("kind") if isinstance(frame["path"], dict) else None
+            path = (TurnPathReference.from_payload(frame["path"]) if kind == "left_turn_v1"
+                    else WavePathReference.from_payload(frame["path"]))
+        else:
+            path = None
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         raise ValueError(f"invalid leader packet: {error}") from error
     return LeaderFrame(
@@ -618,7 +640,7 @@ class PathFormationTracker(FormationTracker):
 
     def __init__(self, plan: FormationPlan) -> None:
         super().__init__(plan)
-        self._path: WavePath | None = None
+        self._path: WavePath | TurnPath | None = None
 
     def control(self, leader: LeaderFrame, follower: RoverStatus) -> FormationControl:
         if leader.path is None or not leader.has_motion_reference:
@@ -626,7 +648,7 @@ class PathFormationTracker(FormationTracker):
         if self._path is not None and self._path.reference.geometry_key != leader.path.geometry_key:
             raise ValueError("follower wave path changed during a run")
         if self._path is None:
-            self._path = WavePath(leader.path)
+            self._path = TurnPath(leader.path) if isinstance(leader.path, TurnPathReference) else WavePath(leader.path)
         path = self._path
         assert path is not None
 
@@ -658,7 +680,8 @@ class PathFormationTracker(FormationTracker):
 
         # Progress synchronizes speed; cross-track and tangent errors steer.
         speed_correction = clamp(0.18 * progress_error, -25.0, 18.0)
-        requested_speed = max(0.0, leader.forward_mm_per_second + speed_correction)
+        lane_speed = leader.forward_mm_per_second * path.speed_ratio_at_s(actual_s, self.plan.offset_y_mm)
+        requested_speed = max(0.0, lane_speed + speed_correction)
         if leader.formation_phase == "settle" and rho > self.plan.settle_target_tolerance_mm:
             requested_speed = clamp(
                 max(requested_speed, self.plan.reacquire_speed_mm_per_second),
@@ -723,7 +746,7 @@ class PathFormationTracker(FormationTracker):
             target_x_mm=target_x,
             target_y_mm=target_y,
             target_heading_deg=path_heading,
-            target_speed_mm_per_second=leader.forward_mm_per_second,
+            target_speed_mm_per_second=lane_speed,
             target_yaw_rate_radians_per_second=yaw_feedforward,
             leader_distance_mm=leader_distance,
             rho_mm=rho,
@@ -800,10 +823,14 @@ def run_follow(
     test_duration_ms: int,
     log_path: Path | None,
     profile: FollowerProfile = FOLLOWER_1,
+    require_mpu_heading: bool = False,
 ) -> None:
     """Commission one follower, then follow only fresh and safe Leader packets."""
     validate_plan(plan)
-    commission(link, test_pwm, test_duration_ms)
+    geometry = NanoGeometry.from_config_fields(link.request("CONFIG").fields)
+    if require_mpu_heading:
+        geometry.require_mpu_heading()
+    preflight_status = commission(link, test_pwm, test_duration_ms)
     require_confirmation(
         profile.confirmation_token,
         f"Place {profile.short_name} at its declared start pose and keep it still. After confirmation Pi "
@@ -823,8 +850,11 @@ def run_follow(
     control: FormationControl | None = None
     consecutive_active_frames = 0
     stopped_for_wait = True
-    logger = FollowerCsvLogger(log_path or default_follower_log_path(profile))
+    logger = FollowerCsvLogger(log_path or default_follower_log_path(profile), geometry)
     started_at = time.monotonic()
+    logger.record("preflight", started_at, follower=preflight_status,
+                  reason="encoder counts before final-position RESET")
+    logger.record("origin", started_at, follower=initial)
     print(f"{profile.short_name} CSV log: {logger.path}")
     print(f"{profile.short_name} armed and listening. It remains stopped until three fresh, safe moving Leader packets arrive.")
     try:
@@ -924,6 +954,7 @@ def build_parser(profile: FollowerProfile = FOLLOWER_1) -> argparse.ArgumentPars
         help=f"CSV destination; default is ~/pi_rover/logs/{profile.log_prefix}_<UTC timestamp>.csv",
     )
     parser.add_argument("--unlock", action="store_true", help="required before the explicit commissioning/follow confirmations")
+    parser.add_argument("--require-mpu-heading", action="store_true", help="Refuse to arm unless Nano CONFIG reports 100% gyro heading.")
     return parser
 
 
@@ -963,7 +994,8 @@ def main(profile: FollowerProfile = FOLLOWER_1) -> int:
     atexit.register(link.stop_safely)
     try:
         link.open()
-        run_follow(link, receiver, plan, args.test_pwm, args.test_duration_ms, args.log, profile)
+        run_follow(link, receiver, plan, args.test_pwm, args.test_duration_ms, args.log, profile,
+                   args.require_mpu_heading)
         return 0
     except (RuntimeError, ValueError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

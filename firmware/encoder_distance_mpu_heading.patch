@@ -1,0 +1,35 @@
+diff --git a/src/main.cpp b/src/main.cpp
+index ffe46d9..531ee2a 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -93,7 +93,9 @@ constexpr unsigned long PREFLIGHT_MIN_PHASE_EDGES = 20UL;
+ constexpr float PREFLIGHT_MIN_PHASE_EDGE_RATIO = 0.75f;
+ constexpr unsigned int PREFLIGHT_MAX_INVALID_TRANSITIONS = 10U;
+ 
+-constexpr float IMU_GYRO_BLEND = 0.70f;
++// Experimental odometry: wheel encoders provide distance; calibrated MPU6050
++// gyro-Z provides the complete heading increment.
++constexpr float IMU_GYRO_BLEND = 1.00f;
+ constexpr float GYRO_SCALE_LSB_PER_DEGREE_PER_SECOND = 131.0f;
+ constexpr float ACCEL_SCALE_LSB_PER_G = 16384.0f;
+ constexpr float GYRO_DEADBAND_DEGREES_PER_SECOND = 0.20f;
+@@ -1626,7 +1628,7 @@ void printUsbIoStatus(uint16_t sequence, bool telemetry) {
+ void printUsbIoConfiguration(uint16_t sequence) {
+   // IO,CONFIG,sequence,left_ticks_per_rev,right_ticks_per_rev,
+   // wheel_diameter_mm,wheel_track_mm,turn_pwm_bias,max_pwm,
+-  // max_manual_hold_ms,max_approved_path
++  // max_manual_hold_ms,max_approved_path,heading_gyro_blend
+   Serial.print(F("IO,CONFIG,"));
+   Serial.print(sequence);
+   Serial.print(F(","));
+@@ -1644,7 +1646,9 @@ void printUsbIoConfiguration(uint16_t sequence) {
+   Serial.print(F(","));
+   Serial.print(MANUAL_COMMAND_TIMEOUT_MS);
+   Serial.print(F(","));
+-  Serial.println(MAX_APPROVED_PRESET_PATH);
++  Serial.print(MAX_APPROVED_PRESET_PATH);
++  Serial.print(F(","));
++  Serial.println(IMU_GYRO_BLEND, 2);
+ }
+ 
+ void printUsbIoImu(uint16_t sequence) {

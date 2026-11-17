@@ -26,6 +26,7 @@ from typing import Iterable
 import serial
 
 from wave_path import WavePath, WavePathReference
+from turn_path import TurnPath, TurnPathReference
 
 
 BAUD = 115200
@@ -60,6 +61,15 @@ class WavePlan:
     control_period_s: float = 0.10
     max_runtime_s: float = 180.0
     formation_settle_s: float = 0.0
+    route_kind: str = "eased_sine_v1"
+    turn_radius_mm: float = 1200.0
+    turn_exit_mm: float = 1000.0
+
+    @property
+    def total_route_length_mm(self) -> float:
+        if self.route_kind == "left_turn_v1":
+            return self.length_mm + self.turn_radius_mm * math.pi / 2 + self.turn_exit_mm
+        return self.length_mm
 
 
 @dataclass(frozen=True)
@@ -112,6 +122,41 @@ class RoverStatus:
         )
 
 
+@dataclass(frozen=True)
+class NanoGeometry:
+    left_ticks_per_rev: float
+    right_ticks_per_rev: float
+    wheel_diameter_mm: float
+    wheel_track_mm: float
+    heading_gyro_blend: float | None = None
+
+    @classmethod
+    def from_config_fields(cls, fields: Iterable[str]) -> "NanoGeometry":
+        values = tuple(fields)
+        if len(values) < 4:
+            raise ProtocolError("CONFIG reply lacks wheel calibration fields")
+        try:
+            geometry = cls(*(float(value) for value in values[:4]),
+                           float(values[8]) if len(values) >= 9 else None)
+        except ValueError as error:
+            raise ProtocolError("CONFIG wheel calibration is invalid") from error
+        if not all(math.isfinite(value) and value > 0 for value in asdict(geometry).values() if value is not None):
+            raise ProtocolError("CONFIG wheel calibration must be finite and positive")
+        if geometry.heading_gyro_blend is not None and geometry.heading_gyro_blend > 1.0:
+            raise ProtocolError("CONFIG heading gyro blend must be at most 1")
+        return geometry
+
+    def require_mpu_heading(self) -> None:
+        if self.heading_gyro_blend is None or abs(self.heading_gyro_blend - 1.0) > 0.001:
+            raise RuntimeError("Nano CONFIG does not confirm 100% MPU heading; refusing this experiment")
+
+    def wheel_distances_mm(self, status: RoverStatus) -> tuple[float, float, float]:
+        circumference = math.pi * self.wheel_diameter_mm
+        left = status.left_count * circumference / self.left_ticks_per_rev
+        right = status.right_count * circumference / self.right_ticks_per_rev
+        return left, right, (left + right) / 2.0
+
+
 WAVE_LOG_STATUS_COLUMNS = tuple(RoverStatus.__dataclass_fields__)
 WAVE_LOG_CONTROL_COLUMNS = tuple(WaveControl.__dataclass_fields__)
 WAVE_LOG_FIELDS = (
@@ -124,6 +169,17 @@ WAVE_LOG_FIELDS = (
     "plan_amplitude_mm",
     "plan_cycles",
     "plan_cruise_mm_per_second",
+    "plan_route_kind",
+    "plan_turn_radius_mm",
+    "plan_turn_exit_mm",
+    "config_left_ticks_per_rev",
+    "config_right_ticks_per_rev",
+    "config_wheel_diameter_mm",
+    "config_wheel_track_mm",
+    "config_heading_gyro_blend",
+    "encoder_left_distance_mm",
+    "encoder_right_distance_mm",
+    "encoder_forward_distance_mm",
     *(f"status_{name}" for name in WAVE_LOG_STATUS_COLUMNS),
     *(f"control_{name}" for name in WAVE_LOG_CONTROL_COLUMNS),
 )
@@ -132,13 +188,14 @@ WAVE_LOG_FIELDS = (
 class WaveCsvLogger:
     """Flush a discussion-ready CSV row after every Pi wave-control update."""
 
-    def __init__(self, path: Path, plan: WavePlan) -> None:
+    def __init__(self, path: Path, plan: WavePlan, geometry: NanoGeometry | None = None) -> None:
         self.path = path.expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.file = self.path.open("w", encoding="utf-8", newline="")
         self.writer = csv.DictWriter(self.file, fieldnames=WAVE_LOG_FIELDS)
         self.writer.writeheader()
         self.plan = plan
+        self.geometry = geometry
 
     def record(
         self,
@@ -157,8 +214,17 @@ class WaveCsvLogger:
             "plan_amplitude_mm": self.plan.amplitude_mm,
             "plan_cycles": self.plan.cycles,
             "plan_cruise_mm_per_second": self.plan.cruise_mm_per_second,
+            "plan_route_kind": self.plan.route_kind,
+            "plan_turn_radius_mm": self.plan.turn_radius_mm if self.plan.route_kind == "left_turn_v1" else "",
+            "plan_turn_exit_mm": self.plan.turn_exit_mm if self.plan.route_kind == "left_turn_v1" else "",
         }
         row.update({f"status_{name}": value for name, value in asdict(status).items()})
+        if self.geometry is not None:
+            row.update({f"config_{name}": value for name, value in asdict(self.geometry).items()})
+            left_mm, right_mm, forward_mm = self.geometry.wheel_distances_mm(status)
+            row.update(encoder_left_distance_mm=left_mm,
+                       encoder_right_distance_mm=right_mm,
+                       encoder_forward_distance_mm=forward_mm)
         if control:
             row.update({f"control_{name}": value for name, value in asdict(control).items()})
         self.writer.writerow(row)
@@ -336,14 +402,20 @@ def wrap_degrees(angle_deg: float) -> float:
 
 
 def validate_wave_plan(plan: WavePlan) -> None:
-    if not 1000.0 <= plan.length_mm <= 5000.0:
-        raise RuntimeError("Wave length must be 1000..5000 mm.")
-    if not 0.0 <= plan.lead_in_mm <= plan.length_mm - 600.0:
-        raise RuntimeError("Lead-in must leave at least 600 mm for the sine segment.")
-    if not 1 <= plan.cycles <= 3:
-        raise RuntimeError("Wave cycles must be 1..3 for this supervised test.")
-    if not 0.0 < plan.amplitude_mm <= 300.0:
-        raise RuntimeError("Wave amplitude must be greater than 0 and at most 300 mm.")
+    if plan.route_kind == "eased_sine_v1":
+        if not 1000.0 <= plan.length_mm <= 5000.0:
+            raise RuntimeError("Wave length must be 1000..5000 mm.")
+        if not 0.0 <= plan.lead_in_mm <= plan.length_mm - 600.0:
+            raise RuntimeError("Lead-in must leave at least 600 mm for the sine segment.")
+        if not 1 <= plan.cycles <= 3:
+            raise RuntimeError("Wave cycles must be 1..3 for this supervised test.")
+        if not 0.0 < plan.amplitude_mm <= 300.0:
+            raise RuntimeError("Wave amplitude must be greater than 0 and at most 300 mm.")
+    elif plan.route_kind == "left_turn_v1":
+        TurnPathReference(plan.length_mm, plan.turn_radius_mm, plan.turn_exit_mm,
+                          0.0, 0.0, 0.0).validate()
+    else:
+        raise RuntimeError("Unsupported Pi route kind")
     if not 0.0 < plan.min_mm_per_second <= plan.cruise_mm_per_second <= plan.max_wheel_mm_per_second <= 100.0:
         raise RuntimeError("Require 0 < min speed <= cruise speed <= max wheel speed <= 100 mm/s.")
     if plan.wheel_track_mm <= 0.0:
@@ -368,6 +440,8 @@ def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> Wa
     wheel-speed targets; Nano's already-tuned encoder velocity controller owns
     PID, static-friction feed-forward, acceleration limiting and PWM generation.
     """
+    if plan.route_kind == "left_turn_v1":
+        return turn_control(status, origin, plan)
     origin_heading_rad = math.radians(origin.heading_deg)
     dx_mm = status.x_mm - origin.x_mm
     dy_mm = status.y_mm - origin.y_mm
@@ -437,6 +511,35 @@ def wave_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> Wa
         left_mm_per_second=left_mm_per_second,
         right_mm_per_second=right_mm_per_second,
     )
+
+
+def turn_control(status: RoverStatus, origin: RoverStatus, plan: WavePlan) -> WaveControl:
+    """Track the Leader's left-turn centerline using its measured MPU pose."""
+    reference = TurnPathReference(plan.length_mm, plan.turn_radius_mm, plan.turn_exit_mm,
+                                  origin.x_mm, origin.y_mm, origin.heading_deg)
+    path = TurnPath(reference)
+    progress_s, signed_lateral = path.project(status.x_mm, status.y_mm, 0.0)
+    _, _, tangent_deg, curvature = path.pose_at_s(progress_s)
+    correction_deg = math.degrees(math.atan2(-signed_lateral, plan.cross_track_lookahead_mm))
+    desired_heading = tangent_deg + clamp(correction_deg, -18.0, 18.0)
+    heading_error = wrap_degrees(desired_heading - status.heading_deg)
+    remaining = max(0.0, reference.end_s_mm - progress_s)
+    speed = clamp(remaining * 0.20, plan.min_mm_per_second, plan.cruise_mm_per_second)
+    speed *= clamp(1.0 - abs(heading_error) / 120.0, 0.40, 1.0)
+    if curvature:
+        speed = min(speed, plan.max_yaw_rate_radians_per_second / abs(curvature),
+                    plan.max_wheel_mm_per_second / (1.0 + plan.wheel_track_mm * abs(curvature) / 2.0))
+    yaw_rate = speed * curvature + plan.heading_gain_radians_per_second_per_radian * math.radians(heading_error)
+    forward_only_limit = 0.92 * 2.0 * speed / plan.wheel_track_mm
+    yaw_rate = clamp(yaw_rate,
+                     -min(plan.max_yaw_rate_radians_per_second, forward_only_limit),
+                     min(plan.max_yaw_rate_radians_per_second, forward_only_limit))
+    left = round(clamp(speed - plan.wheel_track_mm * yaw_rate / 2.0,
+                       0.0, plan.max_wheel_mm_per_second))
+    right = round(clamp(speed + plan.wheel_track_mm * yaw_rate / 2.0,
+                        0.0, plan.max_wheel_mm_per_second))
+    return WaveControl(progress_s, signed_lateral, 0.0, desired_heading,
+                       heading_error, left, right)
 
 
 def require_confirmation(expected: str, message: str) -> None:
@@ -621,6 +724,7 @@ def run_wave(
     plan: WavePlan,
     broadcast: list[str] | None,
     log_path: Path | None,
+    require_mpu_heading: bool = False,
 ) -> None:
     """Execute a Pi-planned, Nano-actuated wave using VELOCITY setpoints.
 
@@ -631,12 +735,15 @@ def run_wave(
     validate_wave_plan(plan)
     if not status.ready_for_path:
         raise RuntimeError("Wave requires a successful commissioning session.")
+    geometry = NanoGeometry.from_config_fields(link.request("CONFIG").fields)
+    if require_mpu_heading:
+        geometry.require_mpu_heading()
 
     require_confirmation(
         "WAVE-3",
         "Place Leader at the route origin and keep it still. After confirmation Pi will "
-        f"RESET its odometry, then command a {plan.length_mm / 1000:.1f} m, "
-        f"{plan.cycles}-cycle +/-{plan.amplitude_mm:.0f} mm sine wave. Retain physical "
+        f"RESET its odometry, then command a {plan.total_route_length_mm / 1000:.2f} m "
+        f"{plan.route_kind} route. Retain physical "
         "motor cutoff.",
     )
     # RESET only after the operator has placed the rover at the route origin.
@@ -646,20 +753,28 @@ def run_wave(
     origin = parse_status_fields(link.request("STATUS").fields)
     if not origin.ready_for_path:
         raise RuntimeError("RESET did not preserve a ready Nano state; refusing to move.")
-    path_base = WavePathReference(
-        length_mm=plan.length_mm,
-        lead_in_mm=plan.lead_in_mm,
-        amplitude_mm=plan.amplitude_mm,
-        cycles=plan.cycles,
-        origin_x_mm=origin.x_mm,
-        origin_y_mm=origin.y_mm,
-        origin_heading_deg=origin.heading_deg,
-    )
-    path_geometry = WavePath(path_base)
+    if plan.route_kind == "left_turn_v1":
+        path_base = TurnPathReference(
+            plan.length_mm, plan.turn_radius_mm, plan.turn_exit_mm,
+            origin.x_mm, origin.y_mm, origin.heading_deg,
+        )
+        path_geometry = TurnPath(path_base)
+    else:
+        path_base = WavePathReference(
+            length_mm=plan.length_mm,
+            lead_in_mm=plan.lead_in_mm,
+            amplitude_mm=plan.amplitude_mm,
+            cycles=plan.cycles,
+            origin_x_mm=origin.x_mm,
+            origin_y_mm=origin.y_mm,
+            origin_heading_deg=origin.heading_deg,
+        )
+        path_geometry = WavePath(path_base)
     publisher = LeaderPublisher(broadcast)
     started_at = time.monotonic()
     current = origin
-    logger = WaveCsvLogger(log_path or default_wave_log_path(), plan)
+    logger = WaveCsvLogger(log_path or default_wave_log_path(), plan, geometry)
+    logger.record("preflight", status, 0.0)
     logger.record("origin", origin, 0.0)
     try:
         print(
@@ -682,7 +797,9 @@ def run_wave(
                 (control.right_mm_per_second - control.left_mm_per_second) / plan.wheel_track_mm,
                 path=replace(
                     path_base,
-                    progress_s_mm=path_geometry.s_at_x(clamp(control.forward_mm, 0.0, plan.length_mm)),
+                    progress_s_mm=(path_geometry.s_at_x(clamp(control.forward_mm, 0.0, plan.length_mm))
+                                   if isinstance(path_geometry, WavePath) else
+                                   clamp(control.forward_mm, 0.0, path_geometry.end_s_mm)),
                 ),
             )
             logger.record("control", current, time.monotonic() - started_at, control)
@@ -694,15 +811,15 @@ def run_wave(
                 f"speed_mm_s=({control.left_mm_per_second},{control.right_mm_per_second})"
             )
             if (
-                control.forward_mm >= plan.length_mm
+                control.forward_mm >= plan.total_route_length_mm
                 and abs(control.lateral_mm) <= plan.completion_lateral_tolerance_mm
                 and abs(control.heading_error_deg) <= plan.completion_heading_tolerance_deg
             ):
                 link.stop_safely()
                 final = parse_status_fields(link.request("STATUS").fields)
-                final_progress = path_geometry.s_at_x(clamp(
+                final_progress = (path_geometry.s_at_x(clamp(
                     wave_control(final, origin, plan).forward_mm, 0.0, plan.length_mm,
-                ))
+                )) if isinstance(path_geometry, WavePath) else path_geometry.end_s_mm)
                 final_path = replace(path_base, progress_s_mm=final_progress)
                 # Keep the Leader still but continue broadcasting a bounded
                 # settle phase.  This lets a lagging F1 close its final
@@ -718,7 +835,7 @@ def run_wave(
                 print_status(final)
                 print("Wave completed. Nano is stopped.")
                 return
-            if control.forward_mm > plan.length_mm + plan.max_finish_overrun_mm:
+            if control.forward_mm > plan.total_route_length_mm + plan.max_finish_overrun_mm:
                 raise RuntimeError("Wave exceeded its finish corridor; stopping.")
 
             cycle_started_at = time.monotonic()
@@ -741,6 +858,7 @@ def run_wave(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Safe Leader-1 Nano USB and formation-reference controller.")
+    parser.add_argument("--version", action="version", version="route-controller 0.2.0-dev+left-turn")
     parser.add_argument("--port", help="Nano /dev/serial/by-id path; auto-detects only when exactly one exists.")
     parser.add_argument("--baud", type=int, default=BAUD)
     actions = parser.add_subparsers(dest="action", required=True)
@@ -797,6 +915,21 @@ def build_parser() -> argparse.ArgumentParser:
     wave.add_argument("--test-pwm", type=int, default=80, help="Pre-wave encoder-test PWM, 1..165 (default 80).")
     wave.add_argument("--test-duration-ms", type=int, default=800, help="Pre-wave encoder-test duration, 50..1200 ms (default 800).")
     wave.add_argument("--unlock", action="store_true")
+    wave.add_argument("--require-mpu-heading", action="store_true", help="Refuse to start unless Nano CONFIG reports 100% gyro heading.")
+    turn = actions.add_parser("turn", help="Pi-planned 1.5 m straight, 90-degree left arc, 1 m exit.")
+    turn.add_argument("--straight-mm", type=float, default=1500.0)
+    turn.add_argument("--radius-mm", type=float, default=1200.0)
+    turn.add_argument("--exit-mm", type=float, default=1000.0)
+    turn.add_argument("--speed-mm-s", type=float, default=30.0)
+    turn.add_argument("--command-ms", type=int, default=180)
+    turn.add_argument("--max-runtime-s", type=float, default=240.0)
+    turn.add_argument("--formation-settle-s", type=float, default=0.0)
+    turn.add_argument("--log", type=Path)
+    turn.add_argument("--broadcast", action="append", metavar="HOST:PORT")
+    turn.add_argument("--test-pwm", type=int, default=80)
+    turn.add_argument("--test-duration-ms", type=int, default=800)
+    turn.add_argument("--unlock", action="store_true")
+    turn.add_argument("--require-mpu-heading", action="store_true")
     return parser
 
 
@@ -874,22 +1007,33 @@ def main() -> int:
                 )
             status = commission(link, args.test_pwm, args.test_duration_ms)
             run_leader(link, status, args.path, args.telemetry_ms, args.broadcast)
-        elif args.action == "wave":
+        elif args.action in {"wave", "turn"}:
             if not args.unlock:
-                raise RuntimeError("Refusing Pi-side wave without --unlock.")
-            plan = WavePlan(
-                length_mm=args.length_mm,
-                lead_in_mm=args.lead_in_mm,
-                amplitude_mm=args.amplitude_mm,
-                cycles=args.cycles,
-                cruise_mm_per_second=args.speed_mm_s,
-                command_ms=args.command_ms,
-                max_runtime_s=args.max_runtime_s,
-                formation_settle_s=args.formation_settle_s,
-            )
+                raise RuntimeError("Refusing Pi-side route without --unlock.")
+            if args.action == "turn":
+                plan = WavePlan(
+                    length_mm=args.straight_mm, route_kind="left_turn_v1",
+                    turn_radius_mm=args.radius_mm, turn_exit_mm=args.exit_mm,
+                    cruise_mm_per_second=args.speed_mm_s,
+                    command_ms=args.command_ms, max_runtime_s=args.max_runtime_s,
+                    formation_settle_s=args.formation_settle_s,
+                )
+            else:
+                plan = WavePlan(
+                    length_mm=args.length_mm,
+                    lead_in_mm=args.lead_in_mm,
+                    amplitude_mm=args.amplitude_mm,
+                    cycles=args.cycles,
+                    cruise_mm_per_second=args.speed_mm_s,
+                    command_ms=args.command_ms,
+                    max_runtime_s=args.max_runtime_s,
+                    formation_settle_s=args.formation_settle_s,
+                )
             validate_wave_plan(plan)
+            if args.require_mpu_heading:
+                NanoGeometry.from_config_fields(link.request("CONFIG").fields).require_mpu_heading()
             status = commission(link, args.test_pwm, args.test_duration_ms)
-            run_wave(link, status, plan, args.broadcast, args.log)
+            run_wave(link, status, plan, args.broadcast, args.log, args.require_mpu_heading)
         return 0
     except (RuntimeError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

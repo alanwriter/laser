@@ -1,19 +1,23 @@
 """Protocol-only tests; they do not open a serial port or command motors."""
 
 import math
+import csv
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from leader_formation import (
     NanoLink,
+    NanoGeometry,
     WaveCsvLogger,
     WavePlan,
     build_parser,
     parse_status_fields,
     wave_control,
+    turn_control,
 )
 from wave_path import WavePath, WavePathReference
+from turn_path import TurnPath, TurnPathReference
 
 
 STATUS = (
@@ -23,6 +27,48 @@ STATUS = (
 
 
 class LeaderProtocolTests(unittest.TestCase):
+    def test_turn_geometry_and_leader_control(self) -> None:
+        reference = TurnPathReference(1500.0, 1200.0, 1000.0, 0.0, 0.0, 0.0)
+        route = TurnPath(reference)
+        halfway = 1500 + 1200 * math.pi / 4
+        x, y, heading, curvature = route.pose_at_s(halfway)
+        self.assertAlmostEqual(heading, 45.0)
+        self.assertAlmostEqual(curvature, 1 / 1200)
+        self.assertAlmostEqual(route.project(x, y, 0.0)[0], halfway, delta=0.01)
+        self.assertAlmostEqual(route.speed_ratio_at_s(halfway, 600), 0.5)
+        self.assertAlmostEqual(route.speed_ratio_at_s(halfway, -600), 1.5)
+        origin = parse_status_fields(("velocity", "0", "0", "0", *STATUS[4:]))
+        point = parse_status_fields(("velocity", str(x), str(y), str(heading), *STATUS[4:]))
+        control = turn_control(point, origin, WavePlan(route_kind="left_turn_v1", cruise_mm_per_second=30))
+        self.assertLess(abs(control.heading_error_deg), 0.01)
+        self.assertGreater(control.right_mm_per_second, control.left_mm_per_second)
+
+    def test_compact_turn_ends_one_meter_forward_and_1_2_meter_left(self) -> None:
+        reference = TurnPathReference(200.0, 800.0, 400.0, 0.0, 0.0, 0.0)
+        route = TurnPath(reference)
+        x, y, heading, _ = route.pose_at_s(reference.end_s_mm)
+        self.assertAlmostEqual(x, 1000.0)
+        self.assertAlmostEqual(y, 1200.0)
+        self.assertAlmostEqual(heading, 90.0)
+        self.assertAlmostEqual(reference.end_s_mm, 200 + 400 * math.pi + 400)
+
+    def test_mpu_heading_gate_and_encoder_distance_use_reported_config(self) -> None:
+        geometry = NanoGeometry.from_config_fields(
+            ("1200", "1000", "65", "130", "0", "165", "1200", "2", "1.00")
+        )
+        geometry.require_mpu_heading()
+        status = parse_status_fields(STATUS)
+        left, right, average = geometry.wheel_distances_mm(status)
+        self.assertAlmostEqual(left, 100 * math.pi * 65 / 1200)
+        self.assertAlmostEqual(right, 101 * math.pi * 65 / 1000)
+        self.assertAlmostEqual(average, (left + right) / 2)
+        with self.assertRaisesRegex(RuntimeError, "does not confirm"):
+            NanoGeometry.from_config_fields(("1200", "1000", "65", "130")).require_mpu_heading()
+        with self.assertRaisesRegex(RuntimeError, "does not confirm"):
+            NanoGeometry.from_config_fields(
+                ("1200", "1000", "65", "130", "0", "165", "1200", "2", "0.70")
+            ).require_mpu_heading()
+
     def test_transmitted_wave_geometry_matches_existing_leader_planner(self) -> None:
         plan = WavePlan()
         path = WavePath(WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0))
@@ -119,6 +165,20 @@ class LeaderProtocolTests(unittest.TestCase):
         self.assertIn("control_heading_error_deg", contents)
         self.assertIn("control", contents)
         self.assertIn(",1.25,", contents)
+
+    def test_wave_csv_contains_raw_counts_and_calibrated_distances(self) -> None:
+        geometry = NanoGeometry(1200.0, 1000.0, 65.0, 130.0, 1.0)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "wave.csv"
+            logger = WaveCsvLogger(path, WavePlan(), geometry)
+            logger.record("control", parse_status_fields(STATUS), 1.0)
+            logger.close()
+            with path.open(newline="") as handle:
+                row = next(csv.DictReader(handle))
+        self.assertEqual(row["status_left_count"], "100")
+        self.assertEqual(row["status_right_count"], "101")
+        self.assertEqual(row["config_heading_gyro_blend"], "1.0")
+        self.assertAlmostEqual(float(row["encoder_left_distance_mm"]), 100 * math.pi * 65 / 1200)
 
 
 if __name__ == "__main__":

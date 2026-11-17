@@ -1,0 +1,9 @@
+Nov 16 15:09:37 pi-leader kernel: usb 2-2: USB disconnect, device number 3
+Nov 16 15:09:37 pi-leader kernel: ch341-uart ttyUSB0: ch341-uart converter now disconnected from ttyUSB0
+Nov 16 15:09:37 pi-leader kernel: ch341 2-2:1.0: device disconnected
+Nov 16 15:09:37 pi-leader kernel: usb 2-2: new full-speed USB device number 4 using xhci-hcd
+Nov 16 15:09:37 pi-leader kernel: usb 2-2: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice= 2.64
+Nov 16 15:09:37 pi-leader kernel: usb 2-2: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+Nov 16 15:09:37 pi-leader kernel: usb 2-2: Product: USB Serial
+Nov 16 15:09:39 pi-leader kernel: ch341 2-2:1.0: ch341-uart converter detected
+Nov 16 15:09:39 pi-leader kernel: usb 2-2: ch341-uart converter now attached to ttyUSB0

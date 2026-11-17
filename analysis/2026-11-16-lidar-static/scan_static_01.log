@@ -1,0 +1,5 @@
+Recording scans: /tmp/laser-lidar-static-20261116/scan_static_01.jsonl.gz
+RPLIDAR S3M1 firmware 1.2; live view: http://127.0.0.1:35749/
+Press Ctrl-C in this terminal or Stop in the browser to stop scanning.
+LiDAR STOP sent.
+LiDAR error: Corrupt scan stream; stopping LiDAR

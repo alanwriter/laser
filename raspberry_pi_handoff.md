@@ -1,4 +1,4 @@
-# Raspberry Pi 軟體專案交接紀錄
+ji3# Raspberry Pi 軟體專案交接紀錄
 
 > 此 Arduino 專案只保留 Nano 硬體控制與接線資料。Raspberry Pi 的 Python、
 > systemd 服務與遠端控制程式應在另一個專案維護。

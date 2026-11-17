@@ -92,6 +92,9 @@ class WavePath:
             )
             previous_slope = slope
 
+    def speed_ratio_at_s(self, _s_mm: float, _lateral_offset_mm: float) -> float:
+        return 1.0
+
     @property
     def end_s_mm(self) -> float:
         return self.s_samples[-1]

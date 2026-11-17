@@ -1,0 +1,22 @@
+--- src/main.cpp
++++ src/main.cpp
+@@ -2253,7 +2253,18 @@
+   Wire.setClock(100000UL);
+   Wire.setWireTimeout(WIRE_TIMEOUT_US, true);
+   Wire.clearWireTimeoutFlag();
+-  if (initialiseMpu6050()) {
++  // USB serial opening resets the Nano. Give the MPU a few brief chances to
++  // respond at boot while motors are held stopped; runtime IMU faults still
++  // use the existing stop/fault path.
++  bool imuReady = false;
++  for (uint8_t attempt = 0; attempt < 5 && !imuReady; ++attempt) {
++    if (attempt > 0) {
++      delay(100);
++      Wire.clearWireTimeoutFlag();
++    }
++    imuReady = initialiseMpu6050();
++  }
++  if (imuReady) {
+ #ifdef AUTORUN_PRESET_DEMO
+     Serial.print(F("MPU6050 detected. Demo will calibrate while still, then run G"));
+     Serial.print(AUTORUN_PRESET_PATH);

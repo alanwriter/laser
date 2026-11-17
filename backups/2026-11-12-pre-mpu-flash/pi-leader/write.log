@@ -1,0 +1,19 @@
+
+avrdude: AVR device initialized and ready to accept instructions
+avrdude: device signature = 0x1e950f (probably m328p)
+avrdude: reading input file .candidate_2026_11_12/leader_encoder_mpu_heading.hex for flash
+         with 29356 bytes in 1 section within [0, 0x72ab]
+         using 230 pages and 84 pad bytes
+avrdude: writing 29356 bytes flash ...
+
+Writing | ################################################## | 100% 4.87s
+
+avrdude: 29356 bytes of flash written
+avrdude: verifying flash memory against .candidate_2026_11_12/leader_encoder_mpu_heading.hex
+
+Reading | ################################################## | 100% 3.91s
+
+avrdude: 29356 bytes of flash verified
+
+avrdude done.  Thank you.
+

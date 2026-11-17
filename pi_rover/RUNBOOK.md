@@ -1,8 +1,13 @@
 # 三車編隊操作手冊
 
-本手冊含 `normal-follow/v0.1.0` 分支的候選程式。**目前 F1 Pi 仍是上一趟 A/B 的
-舊控制器；本地 Git 版本不代表已部署。** 實際上車前先完成下述地面校正、部署
-F1 的新檔案並核對版本。每台 Nano 的 USB port
+2026-11-12 的純 MPU 航向、encoder 資料記錄及左轉候選版另見
+`EXPERIMENT_ENCODER_MPU_TURN.md`；本手冊下列實跑步驟仍記載既有 S 彎配置。
+
+本手冊原本記載 `normal-follow/v0.1.0` 候選實驗。**2026-11-12 三台 Pi
+已部署 `0.2.0-dev+left-turn`，F1/F2 均使用新版路徑跟隨器；三台 Nano
+已燒錄純 MPU 航向候選版並讀回 `CONFIG=1.00`。同日左轉實跑發生近接與接觸，
+不得視為驗證成功。** 實際上車前先完成下述地面校正並
+核對三台 Pi 與 Nano 版本。每台 Nano 的 USB port
 只能由其本車 Pi 上的一個 Python 程式開啟；不要同時執行 `status`、手動測試
 或第二個編隊程式。
 
@@ -17,6 +22,10 @@ F1 的新檔案並核對版本。每台 Nano 的 USB port
   首趟雙新驗證建議明確指定 `--amplitude-mm 20 --cycles 2 --speed-mm-s 25`。
 - F1/F2 起點分別為 `(-400,+400)`／`(-400,-400)` mm。兩台追蹤 Leader
   規劃路徑向左／右平移 400 mm 的路線，進度沿路徑落後 400 mm，航向取各自路線切線。
+- 2026-11-16 F1/F2 Pi 的近接停止門檻已由 150 改為 **250 mm 車上估計的
+  Leader–Follower MPU 點距離**，舊檔已備份。這不是車身／線材的保證淨空；
+  尚無新設定的實車行走驗證。Leader 光達靜止掃描時 Nano USB 曾斷線重連，
+  不應用同一設定直接重跑；見 `analysis/2026-11-16-lidar-static/README.md`。
 - Leader 對 F1/F2 的 UDP 直接單播：`192.168.1.199:5005` 與
   `192.168.1.175:5005`。
 - Leader `wave` 封包附上 `eased_sine_v1` 路徑參數、起始座標及量測進度。
@@ -29,10 +38,10 @@ Leader 的兩個 `--broadcast`。三台 Pi 只需在同一個本地網路，不�
 
 ## 啟動前
 
-上一趟 A/B 實驗只更新 Leader 和 F2，F1 Pi 保持舊版。常態跟隨 `0.1.0`
-需把 `follower_formation.py`、`wave_path.py` 更新到 F1 Pi；F2 也使用此版本的
-`follower_formation.py`、`follower2_formation.py`、`wave_path.py`。Leader 必須
-使用發送 `path` 欄位的 `leader_formation.py`、`wave_path.py`。先以
+上一趟 A/B 實驗只更新 Leader 和 F2，F1 Pi 當時保持舊版；這是歷史紀錄。
+2026-11-12 三台 Pi 已有 `leader_formation.py`、`wave_path.py`、`turn_path.py`，
+F1/F2 也已更新 `follower_formation.py`；F2 保留 `follower2_formation.py`。
+先以
 `python3 follower_formation.py --version`／`python3 follower2_formation.py --version`
 核對 follower 版本，再執行實車準備。完整校正方案見 `CALIBRATION_PLAN.md`。
 

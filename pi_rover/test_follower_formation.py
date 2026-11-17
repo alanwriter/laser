@@ -20,8 +20,9 @@ from follower_formation import (
     leader_is_safe_and_moving,
     parse_leader_frame,
 )
-from leader_formation import RoverStatus, leader_state_payload
+from leader_formation import NanoGeometry, RoverStatus, leader_state_payload
 from wave_path import WavePath, WavePathReference
+from turn_path import TurnPath, TurnPathReference
 
 
 def status(**changes: object) -> RoverStatus:
@@ -37,6 +38,40 @@ def status(**changes: object) -> RoverStatus:
 
 
 class FollowerFormationTests(unittest.TestCase):
+    def test_both_followers_parse_turn_and_scale_inner_outer_speed(self) -> None:
+        route = TurnPath(TurnPathReference(1500, 1200, 1000, 0, 0, 0))
+        leader_s = 1500 + 1200 * 3.141592653589793 / 4 + 400
+        reference = TurnPathReference(1500, 1200, 1000, 0, 0, 0, leader_s)
+        lx, ly, lh, _ = route.pose_at_s(leader_s)
+        packet = leader_state_payload(status(x_mm=lx, y_mm=ly, heading_deg=lh), 30.0,
+                                      path=reference)
+        parsed = parse_leader_frame(json.dumps(packet).encode(), "192.168.1.166", 1.0)
+        self.assertIsInstance(parsed.path, TurnPathReference)
+        controls = []
+        for lateral in (600.0, -600.0):
+            target_x, target_y, target_heading, _ = route.pose_at_s(leader_s - 400, lateral)
+            plan = FormationPlan(offset_y_mm=lateral, follower_start_y_mm=lateral)
+            own = status(x_mm=target_x + 400, y_mm=target_y - lateral, heading_deg=target_heading)
+            control = PathFormationTracker(plan).control(parsed, own)
+            self.assertTrue(control.tracking_safe)
+            self.assertLess(control.rho_mm, 0.01)
+            controls.append(control)
+        self.assertAlmostEqual(controls[0].target_speed_mm_per_second, 15.0)
+        self.assertAlmostEqual(controls[1].target_speed_mm_per_second, 45.0)
+
+    def test_follower_csv_records_encoder_distances(self) -> None:
+        geometry = NanoGeometry(1200.0, 1000.0, 65.0, 130.0, 1.0)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "follower.csv"
+            logger = FollowerCsvLogger(path, geometry)
+            logger.record("control", 0.0, follower=status(left_count=1200, right_count=1000))
+            logger.close()
+            with path.open(newline="") as handle:
+                row = next(csv.DictReader(handle))
+        self.assertEqual(row["follower_left_count"], "1200")
+        self.assertEqual(row["follower_right_count"], "1000")
+        self.assertAlmostEqual(float(row["encoder_forward_distance_mm"]), 65.0 * 3.141592653589793)
+
     def test_leader_wave_packet_is_read_by_both_controllers(self) -> None:
         reference = WavePathReference(1500.0, 0.0, 50.0, 3, 0.0, 0.0, 0.0, 250.0)
         payload = json.dumps(leader_state_payload(status(), 45.0, 0.0, path=reference)).encode()
@@ -233,15 +268,46 @@ class FollowerFormationTests(unittest.TestCase):
         self.assertGreaterEqual(control.right_mm_per_second, 0)
         self.assertGreater(control.left_mm_per_second, control.right_mm_per_second)
 
-    def test_only_150_mm_collision_distance_hard_stops_tracking(self) -> None:
+    def test_250_mm_collision_distance_hard_stops_tracking(self) -> None:
         tracker = FormationTracker(FormationPlan())
         leader = LeaderFrame(status(), 1.0, "192.168.1.166")
-        # F1 is 140 mm directly behind Leader in the shared experiment frame.
-        follower = status(mode="idle", x_mm=260.0, y_mm=-400.0, heading_deg=0.0)
+        # F1 is 249 mm directly behind Leader in the shared experiment frame.
+        follower = status(mode="idle", x_mm=151.0, y_mm=-400.0, heading_deg=0.0)
         control = tracker.control(leader, follower)
-        self.assertLess(control.leader_distance_mm, 150.0)
+        self.assertAlmostEqual(control.leader_distance_mm, 249.0)
         self.assertFalse(control.tracking_safe)
         self.assertEqual(control.stop_reason, "leader is too close")
+
+        at_boundary = FormationTracker(FormationPlan()).control(
+            leader, status(mode="idle", x_mm=150.0, y_mm=-400.0, heading_deg=0.0)
+        )
+        self.assertAlmostEqual(at_boundary.leader_distance_mm, 250.0)
+        self.assertTrue(at_boundary.tracking_safe)
+
+    def test_both_path_followers_apply_250_mm_collision_distance(self) -> None:
+        reference = WavePathReference(1500.0, 0.0, 50.0, 1, 0.0, 0.0, 0.0, 0.0)
+        payload = json.dumps(leader_state_payload(status(), 25.0, 0.0, path=reference)).encode()
+        leader = parse_leader_frame(payload, "192.168.1.166", 1.0)
+        for profile in (FOLLOWER_1, FOLLOWER_2):
+            with self.subTest(follower=profile.short_name):
+                plan = FormationPlan(
+                    offset_x_mm=profile.offset_x_mm,
+                    offset_y_mm=profile.offset_y_mm,
+                    follower_start_x_mm=profile.offset_x_mm,
+                    follower_start_y_mm=profile.offset_y_mm,
+                )
+                inside = PathFormationTracker(plan).control(
+                    leader, status(x_mm=151.0, y_mm=-profile.offset_y_mm)
+                )
+                self.assertAlmostEqual(inside.leader_distance_mm, 249.0)
+                self.assertFalse(inside.tracking_safe)
+                self.assertEqual(inside.stop_reason, "leader is too close")
+
+                at_boundary = PathFormationTracker(plan).control(
+                    leader, status(x_mm=150.0, y_mm=-profile.offset_y_mm)
+                )
+                self.assertAlmostEqual(at_boundary.leader_distance_mm, 250.0)
+                self.assertTrue(at_boundary.tracking_safe)
 
     def test_target_motion_provides_feedforward_speed(self) -> None:
         tracker = FormationTracker(FormationPlan())

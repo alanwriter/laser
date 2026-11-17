@@ -1,0 +1,16 @@
+
+avrdude: AVR device initialized and ready to accept instructions
+avrdude: device signature = 0x1e950f (probably m328p)
+avrdude: reading flash memory ...
+
+Reading | ################################################## | 100% 4.35s
+
+avrdude: writing output file backups/2026-11-12-pre-mpu-flash/flash.hex
+avrdude: reading eeprom memory ...
+
+Reading | ################################################## | 100% 1.54s
+
+avrdude: writing output file backups/2026-11-12-pre-mpu-flash/eeprom.hex
+
+avrdude done.  Thank you.
+

@@ -2,7 +2,8 @@
 
 Git 分支 `normal-follow/v0.1.0`，標籤 `normal-follow-v0.1.0`。
 這個版本把 F1 的預設控制器改成 F2 已試過的路徑跟隨器；F2 保持右側路徑。
-**程式已在 GitHub 候選分支；F1 Pi 仍是上一趟 A/B 的舊版，未做雙新控制器實車驗證。**
+**GitHub 此標籤是歷史候選。2026-11-12 F1 Pi 已部署更晚的
+`0.2.0-dev+left-turn`，但尚未做雙新控制器實車驗證。**
 
 ## 這版控制的定義
 
@@ -14,7 +15,8 @@ F1/F2 各自用 `s*=s_L−400 mm`，車道分別是起始 Leader 座標系的
 無線封包不傳馬達 PWM；Nano 仍執行輪速迴路和命令逾時停止。
 
 程式入口仍是 `follower_formation.py`（F1）和 `follower2_formation.py`（F2）；
-兩者的 `--version` 均回報 `normal-follow 0.1.0`。舊 `FormationTracker` 保留
+此標籤的兩者 `--version` 均回報 `normal-follow 0.1.0`；2026-11-12 本地
+左轉候選則回報 `normal-follow 0.2.0-dev+left-turn`。舊 `FormationTracker` 保留
 供前次 A/B 資料重播，**不再是 F1 預設的實車控制器**。
 
 ## 證據與限制
@@ -31,7 +33,9 @@ F1/F2 各自用 `s*=s_L−400 mm`，車道分別是起始 Leader 座標系的
 - 第二趟 CSV 顯示輪速回報高於目標 TPS，且 Leader 里程計平均 x 進度
   高於命令速度。先按 `CALIBRATION_PLAN.md` 分辨真實速度、編碼器換算及
   輪速迴路，再部署和測量雙新控制器。
-- 此版本只接受 `eased_sine_v1` 路徑封包，不代表可直接追任意規劃器輸出的路徑。
+- GitHub `normal-follow-v0.1.0` 標籤只接受 `eased_sine_v1`。2026-11-12
+  本地工作樹另新增 `left_turn_v1` 候選路線；它不屬於該標籤。2026-11-12
+  三台 Pi 已部署此版程式，三台 Nano 也已燒錄純 MPU 航向候選韌體；尚未實跑。
 
 離線重跑雙新模擬（不開 USB、不發 UDP）：
 

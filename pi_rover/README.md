@@ -249,8 +249,8 @@ F1 follows the left translated route. Along-route progress error adjusts speed;
 cross-track and tangent-heading errors adjust steering, with curvature
 feed-forward and a bend-speed limit. It neither reverses nor pivots on its own.
 A packet older than 0.35 s, missing/malformed path, stopped/faulted Leader,
-F1 fault, serial loss, Ctrl-C, normal process exit, Leader distance below
-150 mm or above 1200 mm, or target error above 800 mm sends F1 `STOP` and
+F1 fault, serial loss, Ctrl-C, normal process exit, estimated Leader–F1 MPU
+distance below 250 mm or above 1200 mm, or target error above 800 mm sends F1 `STOP` and
 requires a new arm. `python3 follower_formation.py --version` reports the
 normal-follow software version.
 
@@ -282,9 +282,11 @@ python3 follower2_formation.py \
 ```
 
 Type `FOLLOWER-2` only after F2 is physically in the right-rear position.
-Both followers require a valid `eased_sine_v1` path in the Leader's `wave`
-broadcasts; without it they stay stopped. The firmware `leader 1/2` PATH modes
-do not publish this path and are not supported by normal-follow `0.1.0`.
+Both followers require a valid path in the Leader broadcast; without it they
+stay stopped. The tagged normal-follow `0.1.0` accepts `eased_sine_v1` from
+`wave`. The local `0.2.0-dev+left-turn` candidate additionally accepts
+`left_turn_v1` from `turn`; see `EXPERIMENT_ENCODER_MPU_TURN.md`. The firmware
+`leader 1/2` PATH modes do not publish either Pi route.
 Leader sends one direct UDP datagram to each Follower Pi; each process opens
 only its own Nano USB port and writes a separate `follower2_<UTC timestamp>.csv`
 log.

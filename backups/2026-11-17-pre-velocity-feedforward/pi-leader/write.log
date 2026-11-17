@@ -1,0 +1,22 @@
+
+avrdude: AVR device initialized and ready to accept instructions
+avrdude: device signature = 0x1e950f (probably m328p)
+avrdude: Note: flash memory has been specified, an erase cycle will be performed.
+         To disable this feature, specify the -D option.
+avrdude: erasing chip
+avrdude: reading input file /home/alanliu/pi_rover/backups/2026-11-17-pre-velocity-feedforward/leader_velocity_feedforward_candidate.hex for flash
+         with 29424 bytes in 1 section within [0, 0x72ef]
+         using 230 pages and 16 pad bytes
+avrdude: writing 29424 bytes flash ...
+
+Writing | ################################################## | 100% 4.87s
+
+avrdude: 29424 bytes of flash written
+avrdude: verifying flash memory against /home/alanliu/pi_rover/backups/2026-11-17-pre-velocity-feedforward/leader_velocity_feedforward_candidate.hex
+
+Reading | ################################################## | 100% 3.91s
+
+avrdude: 29424 bytes of flash verified
+
+avrdude done.  Thank you.
+

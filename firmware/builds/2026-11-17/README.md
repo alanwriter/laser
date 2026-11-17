@@ -1,6 +1,6 @@
-# Leader 左右輪速度→PWM 前饋候選（未燒錄）
+# Leader 左右輪速度→PWM 前饋候選
 
-目的：回應 2026-11-17 的控制方向修正：路徑控制仍只指定左右輪速度，Nano 依每輪目標 TPS 算 PWM，再以 encoder 回授修正。**這是隔離建置的候選韌體，沒有寫入 Leader，也沒有實車驗證。**
+目的：回應 2026-11-17 的控制方向修正：路徑控制仍只指定左右輪速度，Nano 依每輪目標 TPS 算 PWM，再以 encoder 回授修正。此檔原先是隔離建置候選；**在更新前完整 GitHub 備份核對後，已寫入 Leader 並通過靜態檢查，尚未完成行走驗證。** 更新前映像與結果見 [`backups/2026-11-17-pre-velocity-feedforward/README.md`](../../../backups/2026-11-17-pre-velocity-feedforward/README.md)。
 
 ## 來源與變更範圍
 
@@ -24,7 +24,7 @@
 - 用相同工具鏈重建「只套用前兩個 patch」的基底，其 HEX SHA-256 **完全等於** 11/12 已存檔的 Leader MPU 重試版 `a7e364fa9f70e925f4f92ce52b75930fb636207b3f4a8863e92721863dd15558`；故新候選與既有燒錄映像的差異可歸於本次前饋 patch。
 - PlatformIO `nanoatmega328` 編譯成功：Flash **29,424／30,720 bytes（95.8%）**、RAM **874／2,048 bytes（42.7%）**；相對先前 Leader MPU 重試版 Flash 29,404 bytes，增加約 20 bytes。建置只在隔離目錄移除未用到的 Servo `lib_deps`，沒有修改上游設定。
 - 候選 HEX：[`leader_velocity_feedforward_candidate.hex`](leader_velocity_feedforward_candidate.hex)，SHA-256 `8c1ff86f50d15b7b09d6621533cc3757f1ed684690c020f329172bda0cd86005`。
-- 本次沒有燒錄；Leader 仍是 11/12 已驗證的開機 MPU 重試版。`MOTOR 45/45` 正式測點也已在開始前取消，Nano STOP ACK，後續確認 idle／PWM 0／fault 0。
+- 編譯和 `MOTOR 45/45` 測點取消時，此候選尚未燒錄。後續依使用者要求先將完整更新前備份推到 GitHub，才把候選寫入 Leader；flash 驗證與靜態 `HELLO`／`CONFIG`／IMU／STATUS 檢查已通過。尚未接地預檢或行走驗證。
 
 ## 實車門檻與回退
 

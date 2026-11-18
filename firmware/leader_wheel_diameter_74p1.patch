@@ -1,0 +1,11 @@
+--- a/src/vehicle_profile.h
++++ b/src/vehicle_profile.h
+@@ -39,7 +39,7 @@
+ constexpr float RIGHT_TICKS_PER_WHEEL_REVOLUTION = 1222.4f;
+ // Shared 2026-09-06 geometry assumption for F1, F2 and L1. Refine only from
+ // repeated floor tests; the same physical wheel/chassis dimensions are used.
+-constexpr float WHEEL_DIAMETER_MM = 65.0f; // Provisional.
++constexpr float WHEEL_DIAMETER_MM = 74.1f; // 2026-11-18: 65 mm x ground/odometry slope 1.140 (all three rovers).
+ constexpr float WHEEL_TRACK_MM = 130.0f;   // Provisional.
+ 
+ constexpr bool LEFT_MOTOR_REVERSED = false;

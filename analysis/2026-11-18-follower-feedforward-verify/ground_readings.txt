@@ -1,0 +1,1 @@
+straight_f1_ff_1m_20261118T113606Z: ground MPU projection 115 cm (operator), odometry 1002.3 mm -> 1.147

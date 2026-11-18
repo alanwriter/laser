@@ -1,0 +1,11 @@
+--- a/src/vehicle_profile.h
++++ b/src/vehicle_profile.h
+@@ -38,7 +38,7 @@
+ // wheel revolutions. Right remains a conservative provisional 1200 value.
+ constexpr float LEFT_TICKS_PER_WHEEL_REVOLUTION = 1203.5f;
+ constexpr float RIGHT_TICKS_PER_WHEEL_REVOLUTION = 1200.0f;
+-constexpr float WHEEL_DIAMETER_MM = 65.0f;
++constexpr float WHEEL_DIAMETER_MM = 74.1f; // 2026-11-18: 65 mm x ground/odometry slope 1.140 (all three rovers).
+ constexpr float WHEEL_TRACK_MM = 130.0f;
+ 
+ constexpr bool LEFT_MOTOR_REVERSED = false;

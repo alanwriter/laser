@@ -71,3 +71,23 @@ TPS ≥ 200 的點分 100 TPS 區間取中位數，依點數加權線性擬合�
 3. 寫入並驗證，再做唯讀 `HELLO`／`CONFIG`／`IMU`／`STATUS`。
 4. 單車接地短直線：比較同窗左右 count 斜率、目標／實測 TPS、PWM、地面位移與航向。
 5. 若不起轉、停走或偏航，燒回 `firmware/builds/2026-11-12/f*_encoder_mpu_heading.hex`。
+
+## 輪徑修正：65.0 → 74.1 mm（三台，尚未燒錄）
+
+F1 新前饋版 1 m 驗證（命令 30 mm/s，`analysis/2026-11-18-follower-feedforward-verify/`）：實測／目標 TPS 0.94／0.98，
+1 m 用 36.4 s；地面 115 cm、車上 1002.3 mm，比例 1.147，和舊韌體高速時相同，代表誤差是幾何換算、和速度無關。
+使用者要求「說 1 m 就 1 m」，所以三台的 `WHEEL_DIAMETER_MM` 由暫定 65.0 改為 **74.1**（65 × 三車共同斜率 1.140）。
+Nano 用輪徑把 mm 換成 count，這一改同時修正**里程**和 **mm/s 速度命令**；前饋係數以 TPS 表示，不受影響。
+Pi 端從 `CONFIG` 讀輪徑；`leader_sine_calibration.py` 的預設 `--odom-scale` 同步改為 1.0，避免重複放大。
+
+基底先重建確認：Leader（三個 patch，IMU 重試 patch 需 `git apply -p0`）＝ `8c1ff86f…`、F1 ＝ `01f41534…`、F2 ＝ `3f1c851d…`，
+都和車上現有映像相同；再各套用 `firmware/{leader,f1,f2}_wheel_diameter_74p1.patch`（只改這一行）。
+
+| 檔案 | Flash | SHA-256 |
+|---|---|---|
+| `leader_ff_d74p1.hex` | 29,424 B | `bc996ad2a953c78d8772a759edbbb27f96683e25ec9607bbc33112b3cd306c1a` |
+| `f1_ff_d74p1.hex` | 29,310 B | `b26f820f0434a6e86875d3527cb4ef9becb0a7efadc4bd89a222bf9eb2c42569` |
+| `f2_ff_d74p1.hex` | 29,362 B | `3436d84a1221d17db5021fa08111a2e071024953fe33c39c979c847021561589` |
+
+74.1 mm 只是「等效輪徑」，比尺量外徑約 68 mm 大，真正原因（輪徑、ticks／rev 或接地半徑）還沒拆開；
+它只保證直線前進距離。轉彎仍以 MPU 航向為準，輪距 130 mm 未改。

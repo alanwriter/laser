@@ -1,0 +1,45 @@
+{
+  "pi_args": {
+    "straight_mm": 600.0,
+    "radius_mm": 800.0,
+    "exit_mm": 400.0,
+    "leader_speed_mm_s": 38.0,
+    "follower_offset_x_mm": -400.0,
+    "follower_start_x_mm": -400.0,
+    "follower_lane_mm": 400.0
+  },
+  "leader_route_mm": 2256.6,
+  "moving_s": 59.4,
+  "controller_stops": {},
+  "body_extent_mm": {
+    "x_min": -550,
+    "x_max": 1881,
+    "y_min": -484,
+    "y_max": 1297
+  },
+  "final_heading_deg": {
+    "L": 90.0,
+    "F1": 89.6,
+    "F2": 89.7
+  },
+  "Leader-F1": {
+    "min_mpu_mm": 486,
+    "min_body_gap_mm": 245
+  },
+  "Leader-F2": {
+    "min_mpu_mm": 566,
+    "min_body_gap_mm": 287
+  },
+  "F1-F2": {
+    "min_mpu_mm": 799,
+    "min_body_gap_mm": 649
+  },
+  "F1_wheel_cmd_mm_s": [
+    15,
+    38
+  ],
+  "F2_wheel_cmd_mm_s": [
+    38,
+    61
+  ]
+}

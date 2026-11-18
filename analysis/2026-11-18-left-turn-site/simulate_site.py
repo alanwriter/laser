@@ -60,11 +60,14 @@ def main() -> None:
     ap.add_argument("--speed", type=float, default=30.0)
     ap.add_argument("--lag", type=float, default=400.0)
     ap.add_argument("--lane", type=float, default=400.0)
+    ap.add_argument("--start-back", type=float, default=None,
+                    help="follower start distance behind Leader (default = --lag)")
     ap.add_argument("--site-x", type=float, default=2000.0)
     ap.add_argument("--site-left", type=float, default=1200.0)
     ap.add_argument("--name", default="candidate")
     a = ap.parse_args()
 
+    start_back = a.lag if a.start_back is None else a.start_back
     key = TurnPathReference(a.straight, a.radius, a.exit, 0, 0, 0)
     path = TurnPath(key)
     arc = a.radius * math.pi / 2
@@ -72,7 +75,7 @@ def main() -> None:
     end_t = end / a.speed
     lanes = {"F1": a.lane, "F2": -a.lane}
     trackers = {n: PathFormationTracker(FormationPlan(
-        offset_x_mm=-a.lag, offset_y_mm=l, follower_start_x_mm=-a.lag,
+        offset_x_mm=-a.lag, offset_y_mm=l, follower_start_x_mm=-start_back,
         follower_start_y_mm=l)) for n, l in lanes.items()}
     local = {n: status() for n in lanes}
     stops: dict[str, str] = {}
@@ -89,7 +92,7 @@ def main() -> None:
         row = {"t": t, "L": (lx, ly, lh)}
         for n, lane in lanes.items():
             st = local[n]
-            row[n] = (st.x_mm - a.lag, st.y_mm + lane, st.heading_deg)
+            row[n] = (st.x_mm - start_back, st.y_mm + lane, st.heading_deg)
             if n in stops:
                 continue
             c = trackers[n].control(frame, st)
@@ -106,7 +109,7 @@ def main() -> None:
     pairs = {"Leader-F1": ("L", "F1"), "Leader-F2": ("L", "F2"), "F1-F2": ("F1", "F2")}
     summary = {
         "pi_args": {"straight_mm": a.straight, "radius_mm": a.radius, "exit_mm": a.exit,
-                    "leader_speed_mm_s": a.speed, "follower_offset_x_mm": -a.lag,
+                    "leader_speed_mm_s": a.speed, "follower_offset_x_mm": -a.lag, "follower_start_x_mm": -start_back,
                     "follower_lane_mm": a.lane},
         "leader_route_mm": round(end, 1), "moving_s": round(end_t, 1),
         "controller_stops": stops,

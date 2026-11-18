@@ -1,0 +1,1 @@
+straight_f2_2m_20261118T104257Z: INVALID — operator reported the rover got caught/stuck during the run (2026-11-18). Raw data kept; excluded from scale k.

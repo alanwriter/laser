@@ -1,0 +1,22 @@
+
+avrdude: AVR device initialized and ready to accept instructions
+avrdude: device signature = 0x1e950f (probably m328p)
+avrdude: Note: flash memory has been specified, an erase cycle will be performed.
+         To disable this feature, specify the -D option.
+avrdude: erasing chip
+avrdude: reading input file f1_ff_d2m.hex for flash
+         with 29310 bytes in 1 section within [0, 0x727d]
+         using 229 pages and 2 pad bytes
+avrdude: writing 29310 bytes flash ...
+
+Writing | ################################################## | 100% 4.80s
+
+avrdude: 29310 bytes of flash written
+avrdude: verifying flash memory against f1_ff_d2m.hex
+
+Reading | ################################################## | 100% 3.73s
+
+avrdude: 29310 bytes of flash verified
+
+avrdude done.  Thank you.
+

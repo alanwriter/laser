@@ -26,3 +26,10 @@ Leader 到終點後（`leader_formation.py`）可選 `--formation-settle-s` 秒�
 要轉完，目標點本身必須在 Leader 停下時過了彎道終點：出彎直線 ≥ 落後距離。場地左側只有 1.2 m，出彎最多約 200 mm，
 所以 C 把落後距離設成 200（`--offset-x-mm -200`），起點仍用地上 −400 的標記（`--follower-start-x-mm -400`）；
 前段直線 Follower 以追趕速度補上 200 mm。C 是程式既有參數，不需改程式。
+
+## 候選 B 第一次啟動：F1 IMU 開機偵測失敗，未行走（2026-11-18）
+
+使用者選 B 並確認距離後授權「跑」。三台啟動到 CALIBRATE 前，F1 開機 `IO,IMU` 回 present=0（位址欄 105 是失敗時
+最後嘗試的位址），程式自己 STOP ACK 退出；隨即對 Leader、F2 送 SIGINT，兩台 STOP ACK、程序退出。三台都沒有校正、
+預檢或馬達動作。之後 F1 連續 5 次唯讀 `imu` 查詢全部 present=1、位址 104，判定為**開機間歇偵測失敗**，
+和 Leader 11/12 的情況相同（Leader 已燒 `leader_imu_startup_retry.patch`，F1/F2 沒有）。

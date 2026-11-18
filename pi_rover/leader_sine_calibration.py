@@ -27,8 +27,8 @@ from leader_straight_calibration import commission_grounded
 LENGTH_MM = 2000.0
 AMPLITUDE_MM = 70.0
 TRACK_MM = 130.0
-# 2026-11-18: firmware WHEEL_DIAMETER_MM is now 74.1 mm (65 x 1.140), so Nano
-# odometry already reports ground mm.  Pass --odom-scale 1.1483 only when
+# 2026-11-18: firmware WHEEL_DIAMETER_MM now folds in each rover's own 2 m
+# ground/odometry ratio (Leader 74.64 mm), so Nano odometry reports ground mm.  Pass --odom-scale 1.1483 only when
 # replaying a run made on the old 65 mm firmware.
 SCALE_DEFAULT = 1.0
 

@@ -1,0 +1,11 @@
+
+avrdude: AVR device initialized and ready to accept instructions
+avrdude: device signature = 0x1e950f (probably m328p)
+avrdude: reading flash memory ...
+
+Reading | ################################################## | 100% 4.17s
+
+avrdude: writing output file backups/2026-11-18-pre-follower-feedforward/f1_flash.hex
+
+avrdude done.  Thank you.
+

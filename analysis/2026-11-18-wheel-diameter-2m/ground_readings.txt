@@ -1,0 +1,1 @@
+straight_leader_d2m_2m_20261118T114732Z: odometry 2003.8 mm, ground MPU projection 200 cm (operator)

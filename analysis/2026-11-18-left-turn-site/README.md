@@ -33,3 +33,21 @@ Leader 到終點後（`leader_formation.py`）可選 `--formation-settle-s` 秒�
 最後嘗試的位址），程式自己 STOP ACK 退出；隨即對 Leader、F2 送 SIGINT，兩台 STOP ACK、程序退出。三台都沒有校正、
 預檢或馬達動作。之後 F1 連續 5 次唯讀 `imu` 查詢全部 present=1、位址 104，判定為**開機間歇偵測失敗**，
 和 Leader 11/12 的情況相同（Leader 已燒 `leader_imu_startup_retry.patch`，F1/F2 沒有）。
+
+## 候選 B 實跑 2026-11-18 12:23:41Z：完成，無安全停止
+
+重跑後三台 IMU present=1、位址 104；三台靜止校正，再逐台接地預檢（PWM 60／600 ms）：Leader 236／255、47 mm、+1.5°；
+F1 744／730、143 mm、−2.1°；F2 1074／898、186 mm、−15.5°；都是 `encoder_preflight=1`、fault 0。使用者確認放回標記後
+回「跑」，依序送 `FOLLOWER-1`、`FOLLOWER-2`、`WAVE-3`。Leader：`turn --straight-mm 600 --radius-mm 800 --exit-mm 200
+--speed-mm-s 30 --require-mpu-heading`；F1/F2 預設 (−400, ±400)。韌體為每車 2 m 輪徑＋逐輪前饋，Pi 參數就是地面尺寸。
+
+Leader 72.97 s 正常完成，Nano STOP；F1/F2 隨即停住，之後我用 SIGINT 結束仍在等訊號的程式（STOP ACK）。三台程序都已退出。
+
+| 車 | 終點（車上估計） | 模擬終點 | 橫向誤差 中位／最大 | 進度誤差範圍 | 離 Leader 最近（MPU） |
+|---|---|---|---|---|---|
+| Leader | (1401, 1002) mm，86.5° | (1400, 1000)，90° | — | — | — |
+| F1 | (988, 701)，79.0° | (988, 701)，75.7° | 3.3／7.4 mm | −21～+55 mm | 478 mm |
+| F2 | (1750, 506)，72.1° | (1763, 504)，75.6° | 9.9／25.1 mm | −18～+9 mm | 557 mm |
+
+圖：[real_run_122341Z/onboard_paths.png](real_run_122341Z/onboard_paths.png)。**這些都是車上里程＋MPU 估計，不是地面真值**；
+地面位置與車間距要用操作者觀察或影像另外核對。

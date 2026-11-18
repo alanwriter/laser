@@ -72,3 +72,10 @@ Leader 65.8 s 完成；F1/F2 停下後以 SIGINT 結束等待中的程式，三�
 朝向多轉 6–7°（彎道剛結束仍在轉時被停止）。圖：[real_run_123302Z/onboard_paths.png](real_run_123302Z/onboard_paths.png)。
 同樣是車上估計，不是地面真值。另外補存 12:23Z 的影片抽幀：`real_run_122341Z/video_contact_sheet.jpg`、`video_turn_closeup.jpg`
 （`~/Downloads/IMG_8212.MOV`；斜拍、手持，只能判斷沒有接觸與隊形，不能量公分級誤差）。
+
+### 影片（12:33Z）
+
+`~/Downloads/IMG_8213.MOV`（20:33 本地時間，65.2 s，4K 30 fps；SHA-256 前綴 `54604778217696f9`）。抽幀：
+`real_run_123302Z/video_contact_sheet.jpg`（每 5 s）。全程無接觸、間距清楚；F1 前段直線偏出後修回，與車上橫向誤差
+最大 30 mm 相符；最後三車排成一列、朝向一致。12:23Z 影片為 `IMG_8212.MOV`（SHA-256 前綴 `a84c6e9fb0dc260c`）。
+操作者評價兩趟都跑得很好。今天的總整理見 `../2026-11-18-SUMMARY.md`。

@@ -14,7 +14,7 @@
 [simulate_scaled.py](simulate_scaled.py) 用現行 `PathFormationTracker` 加理想差速模型，
 得到 [scaled_turn.png](scaled_turn.png) 與 [summary.json](summary.json)：沒有安全停止；
 地面最小 MPU 距離 Leader–F1／Leader–F2／F1–F2 為 514／566／799 mm，
-車身外框間隙 222／277／638 mm；F2 外圈會碰到 75 mm/s 輪速上限。
+車身外框間隙 263／288／638 mm（11/18 修正：原本把已是「度」的 Leader 航向又轉一次，外框畫錯，曾誤寫 222／277；MPU 距離與 Follower 命令不受影響）；F2 外圈會碰到 75 mm/s 輪速上限。
 這個模型**沒有馬達動態**，也沒有反映三台韌體的速度特性不同。
 
 **設計錯誤：** 這條路線地面上約需 3.9 m 的前進距離，實驗室直線只有約 2 m。

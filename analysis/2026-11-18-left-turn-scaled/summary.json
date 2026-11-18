@@ -20,12 +20,12 @@
   "controller_stops": {},
   "Leader-F1": {
     "min_mpu_ground_mm": 514,
-    "min_body_gap_ground_mm": 222,
+    "min_body_gap_ground_mm": 263,
     "min_mpu_odometry_mm": 451
   },
   "Leader-F2": {
     "min_mpu_ground_mm": 566,
-    "min_body_gap_ground_mm": 277,
+    "min_body_gap_ground_mm": 288,
     "min_mpu_odometry_mm": 496
   },
   "F1-F2": {

@@ -72,12 +72,12 @@ def main() -> None:
         lx, ly, lh, _ = path.pose_at_s(s, 0.0)
         speed = LEADER_SPEED if t < end_t else 0.0
         yaw = LEADER_SPEED / ODOM["radius"] if ODOM["straight"] < s < ODOM["straight"] + arc else 0.0
-        frame = LeaderFrame(status=status(lx, ly, math.degrees(lh)), received_monotonic_s=t,
+        frame = LeaderFrame(status=status(lx, ly, lh), received_monotonic_s=t,
                             source_host="offline", forward_mm_per_second=speed,
                             yaw_rate_radians_per_second=yaw, has_motion_reference=True,
                             formation_phase="moving" if speed else "settle",
                             path=replace(key, progress_s_mm=s))
-        row = {"t": t, "L": (lx, ly, math.degrees(lh))}
+        row = {"t": t, "L": (lx, ly, lh)}
         for n, lane in lanes.items():
             st = local[n]
             row[n] = (st.x_mm - ODOM["lag"], st.y_mm + lane, st.heading_deg)

@@ -122,6 +122,23 @@
   車頭偏更多；MPU 的精確地面偏移仍未量到。舊 CSV 可畫三車閉環「目標 TPS→
   實測 TPS」近似圖，不能當開環 PWM 曲線；原始資料與圖見
   `analysis/2026-11-16-motor-curves/README.md`。不要把此中止試次當成功直行。
+- 2026-11-17 Leader 已在備份後燒錄**逐輪速度→PWM 前饋**候選韌體；F1/F2 仍是 11/12
+  純 MPU 航向韌體（舊的共用前饋）。三台 Pi 程式未變（`0.2.0-dev+left-turn`）。
+  另外把 `leader_straight_calibration.py`（SHA `018e70a3…`，與 repo 相同）複製到
+  F1/F2 的 `~/pi_rover/`，用來量直線。Leader 的 `pi-leader.local` 解析失敗時
+  改用 IP `192.168.1.166`（SSH port 1144）。
+- 2026-11-18 F1/F2 直線里程比例：三台的「地面 = a × 車上 + b」斜率 a 都是
+  **1.140**，b 為 0.5–3 cm（擺位／讀值量級）。誤差是線性的，而且是三台共同的換算
+  尺度；快速校正在 Pi 層共用 1.140。舊韌體的 F1/F2 在 25 mm/s 命令時實際約
+  78–86 mm/s。一趟 F2 中途卡住，已標無效。見
+  `analysis/2026-11-18-follower-straight/README.md`。
+- 2026-11-18 11:01Z 大左轉（Pi 參數 = 地面 ÷ 1.140，Leader 60 mm/s）**無效**：
+  路線約需 3.9 m 前進距離，**實驗室直線只有約 2 m**，Leader 撞牆；F1/F2
+  舊韌體在 35 mm/s 命令下實際跑到 92／102 mm/s，Pi 拉不住，兩台都跑到
+  Leader 前面，分別觸發「Leader 太近」與「目標誤差過大」安全停止。三台
+  STOP ACK、程序退出。**F1/F2 的速度特性和 Leader 一致之前不跑三車編隊；新路線
+  先問場地尺寸、畫圖給使用者確認。** 見
+  `analysis/2026-11-18-left-turn-scaled/README.md`。
 
 ## 使用者偏好的試跑節奏
 

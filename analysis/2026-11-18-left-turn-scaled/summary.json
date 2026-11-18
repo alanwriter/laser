@@ -1,0 +1,44 @@
+{
+  "scale": 1.14,
+  "ground_mm": {
+    "straight": 1500.0,
+    "radius": 1200.0,
+    "exit": 1000.0,
+    "lag": 400.0,
+    "lane": 400.0
+  },
+  "pi_arguments_odometry_mm": {
+    "straight": 1315.8,
+    "radius": 1052.6,
+    "exit": 877.2,
+    "lag": 350.9,
+    "lane": 350.9
+  },
+  "leader_speed_odometry_mm_s": 60.0,
+  "leader_route_odometry_mm": 3846.4,
+  "moving_s": 64.1,
+  "controller_stops": {},
+  "Leader-F1": {
+    "min_mpu_ground_mm": 514,
+    "min_body_gap_ground_mm": 222,
+    "min_mpu_odometry_mm": 451
+  },
+  "Leader-F2": {
+    "min_mpu_ground_mm": 566,
+    "min_body_gap_ground_mm": 277,
+    "min_mpu_odometry_mm": 496
+  },
+  "F1-F2": {
+    "min_mpu_ground_mm": 799,
+    "min_body_gap_ground_mm": 638,
+    "min_mpu_odometry_mm": 701
+  },
+  "F1_wheel_cmd_mm_s": {
+    "min": 35,
+    "max": 61
+  },
+  "F2_wheel_cmd_mm_s": {
+    "min": 60,
+    "max": 75
+  }
+}

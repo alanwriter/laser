@@ -9,3 +9,6 @@ __pycache__/
 # Hardware- and session-specific outputs
 anchor_calibration.json
 recordings/
+
+# Per-user Claude Code settings (machine-specific paths)
+.claude/settings.local.json

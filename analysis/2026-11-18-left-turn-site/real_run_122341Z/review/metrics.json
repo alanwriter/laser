@@ -1,0 +1,279 @@
+{
+  "phase_boundaries_leader_s": {
+    "straight_end": 20.5565417313404,
+    "arc_end": 63.14429778276491,
+    "leader_stop": 72.950641
+  },
+  "phase_boundaries_by_car_s": {
+    "Leader": {
+      "straight_end": 20.56,
+      "arc_end": 63.14,
+      "run_end": 72.95
+    },
+    "F1": {
+      "straight_end": 33.95,
+      "arc_end": null,
+      "run_end": 72.62
+    },
+    "F2": {
+      "straight_end": 33.95,
+      "arc_end": null,
+      "run_end": 72.62
+    }
+  },
+  "video": {
+    "fps": 29.99930104144824,
+    "frames": 2146,
+    "duration_s": 71.535,
+    "sample_video_times_s": [
+      0,
+      10,
+      20,
+      30,
+      40,
+      50,
+      60,
+      71.335
+    ]
+  },
+  "cars": {
+    "Leader": {
+      "onboard_endpoint_mm_deg": [
+        1401.3,
+        1001.1,
+        86.5
+      ],
+      "phases": {
+        "straight": {
+          "duration_s": 20.56,
+          "left": {
+            "median_rate_over_target": 1.015,
+            "median_pwm": 40,
+            "max_pwm": 54
+          },
+          "right": {
+            "median_rate_over_target": 0.994,
+            "median_pwm": 41,
+            "max_pwm": 60
+          }
+        },
+        "arc": {
+          "duration_s": 42.59,
+          "left": {
+            "median_rate_over_target": 1.004,
+            "median_pwm": 37,
+            "max_pwm": 49
+          },
+          "right": {
+            "median_rate_over_target": 1.0,
+            "median_pwm": 43,
+            "max_pwm": 61
+          }
+        },
+        "exit": {
+          "duration_s": 9.81,
+          "left": {
+            "median_rate_over_target": 0.941,
+            "median_pwm": 45,
+            "max_pwm": 59
+          },
+          "right": {
+            "median_rate_over_target": 1.043,
+            "median_pwm": 40,
+            "max_pwm": 59
+          }
+        }
+      },
+      "health": {
+        "nonzero_fault_rows": 0,
+        "preflight_not_one_rows": 0,
+        "imu_missing_rows": 0,
+        "imu_uncalibrated_rows": 0
+      },
+      "left": {
+        "median_target_tps_active": 145.2,
+        "median_count_slope_tps_active": 143.4,
+        "median_count_slope_over_target_active": 1.004,
+        "p95_abs_tracking_error_tps_active": 34.4,
+        "max_logged_pwm": 60,
+        "mm_per_tick": 0.19266919759766404
+      },
+      "right": {
+        "median_target_tps_active": 161.6,
+        "median_count_slope_tps_active": 161.8,
+        "median_count_slope_over_target_active": 1.0,
+        "p95_abs_tracking_error_tps_active": 29.6,
+        "max_logged_pwm": 61,
+        "mm_per_tick": 0.1917235045466284
+      }
+    },
+    "F1": {
+      "onboard_endpoint_mm_deg": [
+        988.5,
+        700.6,
+        79.0
+      ],
+      "phases": {
+        "straight": {
+          "duration_s": 33.95,
+          "left": {
+            "median_rate_over_target": 1.0,
+            "median_pwm": 24,
+            "max_pwm": 35
+          },
+          "right": {
+            "median_rate_over_target": 1.021,
+            "median_pwm": 34,
+            "max_pwm": 46
+          }
+        },
+        "arc": {
+          "duration_s": 38.68,
+          "left": {
+            "median_rate_over_target": 0.797,
+            "median_pwm": 30,
+            "max_pwm": 53
+          },
+          "right": {
+            "median_rate_over_target": 0.978,
+            "median_pwm": 34,
+            "max_pwm": 57
+          }
+        },
+        "exit": {
+          "duration_s": 0,
+          "left": null,
+          "right": null
+        }
+      },
+      "health": {
+        "nonzero_fault_rows": 0,
+        "preflight_not_one_rows": 0,
+        "imu_missing_rows": 0,
+        "imu_uncalibrated_rows": 0,
+        "tracking_unsafe_rows": 0,
+        "nonempty_stop_reason_rows": 0,
+        "max_leader_frame_age_s": 0.149
+      },
+      "left": {
+        "median_target_tps_active": 144.4,
+        "median_count_slope_tps_active": 143.0,
+        "median_count_slope_over_target_active": 0.983,
+        "p95_abs_tracking_error_tps_active": 64.4,
+        "max_logged_pwm": 53,
+        "mm_per_tick": 0.19395125397733412
+      },
+      "right": {
+        "median_target_tps_active": 118.2,
+        "median_count_slope_tps_active": 134.4,
+        "median_count_slope_over_target_active": 1.013,
+        "p95_abs_tracking_error_tps_active": 85.6,
+        "max_logged_pwm": 57,
+        "mm_per_tick": 0.19451694513476803
+      },
+      "lateral_error": {
+        "median_abs": 3.28,
+        "max_abs": 7.4
+      },
+      "longitudinal_error": {
+        "median_abs": 4.62,
+        "max_abs": 55.0
+      },
+      "heading_error": {
+        "median_abs": 2.6,
+        "max_abs": 7.06
+      },
+      "min_estimated_leader_mpu_distance_mm": 477.8
+    },
+    "F2": {
+      "onboard_endpoint_mm_deg": [
+        1749.9,
+        505.8,
+        72.1
+      ],
+      "phases": {
+        "straight": {
+          "duration_s": 33.95,
+          "left": {
+            "median_rate_over_target": 1.027,
+            "median_pwm": 26,
+            "max_pwm": 42
+          },
+          "right": {
+            "median_rate_over_target": 0.999,
+            "median_pwm": 23,
+            "max_pwm": 40
+          }
+        },
+        "arc": {
+          "duration_s": 38.68,
+          "left": {
+            "median_rate_over_target": 0.97,
+            "median_pwm": 27,
+            "max_pwm": 42
+          },
+          "right": {
+            "median_rate_over_target": 1.031,
+            "median_pwm": 23,
+            "max_pwm": 40
+          }
+        },
+        "exit": {
+          "duration_s": 0,
+          "left": null,
+          "right": null
+        }
+      },
+      "health": {
+        "nonzero_fault_rows": 0,
+        "preflight_not_one_rows": 0,
+        "imu_missing_rows": 0,
+        "imu_uncalibrated_rows": 0,
+        "tracking_unsafe_rows": 0,
+        "nonempty_stop_reason_rows": 0,
+        "max_leader_frame_age_s": 0.152
+      },
+      "left": {
+        "median_target_tps_active": 180.5,
+        "median_count_slope_tps_active": 180.7,
+        "median_count_slope_over_target_active": 1.002,
+        "p95_abs_tracking_error_tps_active": 35.3,
+        "max_logged_pwm": 42,
+        "mm_per_tick": 0.1939924422665626
+      },
+      "right": {
+        "median_target_tps_active": 183.7,
+        "median_count_slope_tps_active": 181.2,
+        "median_count_slope_over_target_active": 1.02,
+        "p95_abs_tracking_error_tps_active": 36.2,
+        "max_logged_pwm": 40,
+        "mm_per_tick": 0.1906688284181295
+      },
+      "lateral_error": {
+        "median_abs": 9.92,
+        "max_abs": 25.07
+      },
+      "longitudinal_error": {
+        "median_abs": 2.71,
+        "max_abs": 17.86
+      },
+      "heading_error": {
+        "median_abs": 6.61,
+        "max_abs": 12.15
+      },
+      "min_estimated_leader_mpu_distance_mm": 557.1
+    }
+  },
+  "route": {
+    "straight_mm": 600,
+    "radius_mm": 800,
+    "exit_mm": 200,
+    "leader_command_mm_s": 30,
+    "follower_lag_mm": 400,
+    "lane_offsets_mm": [
+      400,
+      -400
+    ]
+  },
+  "video_file": "/Users/alansmacbook/Downloads/IMG_8212.MOV"
+}

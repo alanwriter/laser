@@ -109,7 +109,7 @@ F1 725／565、123.5 mm、−14.8°（右輪開環仍偏弱，但比 11/18 的 9
 全部 `encoder_preflight=1`、fault 0。操作者一次確認後依序送 `FOLLOWER-1`、`FOLLOWER-2`、`WAVE-3`。
 啟動 F2 時 Wi-Fi 短暫中斷一次，指令沒有送達，重送後正常；行走期間沒有網路異常。
 
-Leader 約 63 s 正常完成、Nano STOP；F1/F2 隨即停止等待，之後以 SIGINT 結束，三台 STOP ACK、程序退出。
+Leader 64.9 s 正常完成、Nano STOP；F1/F2 隨即停止等待，之後以 SIGINT 結束，三台 STOP ACK、程序退出。
 
 和 11/18 同路線的解析路徑實跑（`../2026-11-18-left-turn-site/real_run_123302Z`）比較，
 兩趟都以同一條理想車道（R800 ±400）計算（`real_run_084014Z/metrics.json`、`onboard_comparison.png`）：

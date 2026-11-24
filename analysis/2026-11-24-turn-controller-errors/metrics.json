@@ -1,0 +1,842 @@
+{
+  "B  11/18 30 mm/s 解析": {
+    "L": {
+      "all": {
+        "e_y": {
+          "rms": 1.88,
+          "max_abs": 4.17,
+          "p95_abs": 3.3,
+          "mean": 0.13,
+          "n": 650
+        },
+        "e_psi": {
+          "rms": 1.64,
+          "max_abs": 4.4,
+          "p95_abs": 3.26,
+          "mean": 0.09,
+          "n": 650
+        }
+      },
+      "e_y_period_s": 14.6,
+      "e_psi_period_s": 14.6,
+      "duration_s": 73.0
+    },
+    "F1": {
+      "all": {
+        "e_y": {
+          "rms": 3.96,
+          "max_abs": 7.4,
+          "p95_abs": 6.9,
+          "mean": 0.4,
+          "n": 667
+        },
+        "e_s": {
+          "rms": 10.66,
+          "max_abs": 55.0,
+          "p95_abs": 23.15,
+          "mean": 1.34,
+          "n": 667
+        },
+        "e_psi": {
+          "rms": 3.41,
+          "max_abs": 7.06,
+          "p95_abs": 6.5,
+          "mean": -0.12,
+          "n": 667
+        }
+      },
+      "segments": {
+        "直線": {
+          "e_y": {
+            "rms": 3.98,
+            "max_abs": 7.4,
+            "p95_abs": 7.1,
+            "mean": 0.37,
+            "n": 306
+          },
+          "e_s": {
+            "rms": 3.22,
+            "max_abs": 6.8,
+            "p95_abs": 5.6,
+            "mean": 1.26,
+            "n": 306
+          },
+          "e_psi": {
+            "rms": 2.24,
+            "max_abs": 4.6,
+            "p95_abs": 4.3,
+            "mean": -0.02,
+            "n": 306
+          },
+          "length_mm": 999
+        },
+        "進彎 0–300 mm": {
+          "e_y": {
+            "rms": 3.3,
+            "max_abs": 5.12,
+            "p95_abs": 5.1,
+            "mean": 2.17,
+            "n": 99
+          },
+          "e_s": {
+            "rms": 12.74,
+            "max_abs": 37.57,
+            "p95_abs": 28.93,
+            "mean": 0.04,
+            "n": 99
+          },
+          "e_psi": {
+            "rms": 2.81,
+            "max_abs": 4.83,
+            "p95_abs": 4.62,
+            "mean": 1.53,
+            "n": 99
+          },
+          "length_mm": 295
+        },
+        "穩定彎道": {
+          "e_y": {
+            "rms": 4.16,
+            "max_abs": 7.08,
+            "p95_abs": 6.9,
+            "mean": -0.24,
+            "n": 262
+          },
+          "e_s": {
+            "rms": 14.7,
+            "max_abs": 55.0,
+            "p95_abs": 30.73,
+            "mean": 1.93,
+            "n": 262
+          },
+          "e_psi": {
+            "rms": 4.56,
+            "max_abs": 7.06,
+            "p95_abs": 6.84,
+            "mean": -0.86,
+            "n": 262
+          },
+          "length_mm": 754
+        }
+      },
+      "e_y_period_s": 35.3,
+      "smoothness": {
+        "dv_rms_mm_s_per_cycle": 0.64,
+        "dw_rms_rad_s_per_cycle": 0.005,
+        "step_limit_hit_pct": 0.2,
+        "yaw_limit_hit_pct": 0.0,
+        "wheel_cmd_min_max": [
+          6,
+          33
+        ]
+      },
+      "actuation": {
+        "yaw_rate_meas_minus_cmd_rms": 0.039,
+        "yaw_rate_cmd_rms": 0.04
+      },
+      "timing": {
+        "loop_period_median_s": 0.112,
+        "loop_period_p95_s": 0.121,
+        "leader_age_median_s": 0.021,
+        "leader_age_p95_s": 0.03,
+        "leader_age_max_s": 0.149
+      },
+      "min_leader_distance_mm": 478,
+      "final_s_mm": 1656,
+      "final_heading_deg": 79.0
+    },
+    "F2": {
+      "all": {
+        "e_y": {
+          "rms": 11.86,
+          "max_abs": 25.07,
+          "p95_abs": 21.12,
+          "mean": -3.49,
+          "n": 668
+        },
+        "e_s": {
+          "rms": 4.24,
+          "max_abs": 17.86,
+          "p95_abs": 7.0,
+          "mean": 2.38,
+          "n": 668
+        },
+        "e_psi": {
+          "rms": 6.81,
+          "max_abs": 12.15,
+          "p95_abs": 10.71,
+          "mean": -0.44,
+          "n": 668
+        }
+      },
+      "segments": {
+        "直線": {
+          "e_y": {
+            "rms": 9.6,
+            "max_abs": 17.6,
+            "p95_abs": 16.96,
+            "mean": -2.98,
+            "n": 309
+          },
+          "e_s": {
+            "rms": 4.38,
+            "max_abs": 9.3,
+            "p95_abs": 7.3,
+            "mean": 3.5,
+            "n": 309
+          },
+          "e_psi": {
+            "rms": 5.98,
+            "max_abs": 9.7,
+            "p95_abs": 9.1,
+            "mean": 0.57,
+            "n": 309
+          },
+          "length_mm": 998
+        },
+        "進彎 0–300 mm": {
+          "e_y": {
+            "rms": 14.53,
+            "max_abs": 21.37,
+            "p95_abs": 21.25,
+            "mean": -11.17,
+            "n": 95
+          },
+          "e_s": {
+            "rms": 1.95,
+            "max_abs": 4.2,
+            "p95_abs": 3.62,
+            "mean": 0.92,
+            "n": 95
+          },
+          "e_psi": {
+            "rms": 6.34,
+            "max_abs": 8.92,
+            "p95_abs": 8.44,
+            "mean": -2.04,
+            "n": 95
+          },
+          "length_mm": 297
+        },
+        "穩定彎道": {
+          "e_y": {
+            "rms": 13.13,
+            "max_abs": 25.07,
+            "p95_abs": 24.08,
+            "mean": -1.33,
+            "n": 264
+          },
+          "e_s": {
+            "rms": 4.65,
+            "max_abs": 17.86,
+            "p95_abs": 7.52,
+            "mean": 1.58,
+            "n": 264
+          },
+          "e_psi": {
+            "rms": 7.8,
+            "max_abs": 12.15,
+            "p95_abs": 11.35,
+            "mean": -1.04,
+            "n": 264
+          },
+          "length_mm": 756
+        }
+      },
+      "e_y_period_s": 17.7,
+      "smoothness": {
+        "dv_rms_mm_s_per_cycle": 0.65,
+        "dw_rms_rad_s_per_cycle": 0.0057,
+        "step_limit_hit_pct": 0.1,
+        "yaw_limit_hit_pct": 0.0,
+        "wheel_cmd_min_max": [
+          18,
+          54
+        ]
+      },
+      "actuation": {
+        "yaw_rate_meas_minus_cmd_rms": 0.069,
+        "yaw_rate_cmd_rms": 0.065
+      },
+      "timing": {
+        "loop_period_median_s": 0.112,
+        "loop_period_p95_s": 0.122,
+        "leader_age_median_s": 0.021,
+        "leader_age_p95_s": 0.033,
+        "leader_age_max_s": 0.152
+      },
+      "min_leader_distance_mm": 557,
+      "final_s_mm": 1656,
+      "final_heading_deg": 72.1
+    },
+    "F1-F2_note": "n = 1 run per condition; F1 and F2 are two lanes, not repeats"
+  },
+  "D  11/18 38 mm/s 解析": {
+    "L": {
+      "all": {
+        "e_y": {
+          "rms": 2.35,
+          "max_abs": 4.6,
+          "p95_abs": 4.2,
+          "mean": -0.5,
+          "n": 585
+        },
+        "e_psi": {
+          "rms": 2.14,
+          "max_abs": 6.5,
+          "p95_abs": 3.8,
+          "mean": -0.1,
+          "n": 585
+        }
+      },
+      "e_y_period_s": 13.2,
+      "e_psi_period_s": 13.2,
+      "duration_s": 65.8
+    },
+    "F1": {
+      "all": {
+        "e_y": {
+          "rms": 11.39,
+          "max_abs": 30.1,
+          "p95_abs": 25.28,
+          "mean": 2.39,
+          "n": 606
+        },
+        "e_s": {
+          "rms": 7.89,
+          "max_abs": 33.73,
+          "p95_abs": 13.86,
+          "mean": 3.04,
+          "n": 606
+        },
+        "e_psi": {
+          "rms": 7.82,
+          "max_abs": 17.69,
+          "p95_abs": 13.57,
+          "mean": -0.5,
+          "n": 606
+        }
+      },
+      "segments": {
+        "直線": {
+          "e_y": {
+            "rms": 16.4,
+            "max_abs": 30.1,
+            "p95_abs": 28.53,
+            "mean": 4.03,
+            "n": 248
+          },
+          "e_s": {
+            "rms": 6.71,
+            "max_abs": 15.5,
+            "p95_abs": 12.47,
+            "mean": 4.98,
+            "n": 248
+          },
+          "e_psi": {
+            "rms": 8.99,
+            "max_abs": 17.5,
+            "p95_abs": 14.42,
+            "mean": 0.15,
+            "n": 248
+          },
+          "length_mm": 996
+        },
+        "進彎 0–300 mm": {
+          "e_y": {
+            "rms": 6.7,
+            "max_abs": 9.74,
+            "p95_abs": 9.65,
+            "mean": -5.24,
+            "n": 70
+          },
+          "e_s": {
+            "rms": 5.97,
+            "max_abs": 13.52,
+            "p95_abs": 11.27,
+            "mean": 3.03,
+            "n": 70
+          },
+          "e_psi": {
+            "rms": 9.86,
+            "max_abs": 17.69,
+            "p95_abs": 16.22,
+            "mean": -2.58,
+            "n": 70
+          },
+          "length_mm": 299
+        },
+        "穩定彎道": {
+          "e_y": {
+            "rms": 5.51,
+            "max_abs": 8.44,
+            "p95_abs": 8.05,
+            "mean": 2.84,
+            "n": 288
+          },
+          "e_s": {
+            "rms": 9.15,
+            "max_abs": 33.73,
+            "p95_abs": 16.69,
+            "mean": 1.38,
+            "n": 288
+          },
+          "e_psi": {
+            "rms": 5.96,
+            "max_abs": 11.84,
+            "p95_abs": 9.44,
+            "mean": -0.55,
+            "n": 288
+          },
+          "length_mm": 951
+        }
+      },
+      "e_y_period_s": 15.9,
+      "smoothness": {
+        "dv_rms_mm_s_per_cycle": 0.68,
+        "dw_rms_rad_s_per_cycle": 0.0058,
+        "step_limit_hit_pct": 0.3,
+        "yaw_limit_hit_pct": 0.0,
+        "wheel_cmd_min_max": [
+          6,
+          48
+        ]
+      },
+      "actuation": {
+        "yaw_rate_meas_minus_cmd_rms": 0.081,
+        "yaw_rate_cmd_rms": 0.078
+      },
+      "timing": {
+        "loop_period_median_s": 0.112,
+        "loop_period_p95_s": 0.122,
+        "leader_age_median_s": 0.021,
+        "leader_age_p95_s": 0.034,
+        "leader_age_max_s": 0.156
+      },
+      "min_leader_distance_mm": 480,
+      "final_s_mm": 1854,
+      "final_heading_deg": 96.2
+    },
+    "F2": {
+      "all": {
+        "e_y": {
+          "rms": 10.31,
+          "max_abs": 22.3,
+          "p95_abs": 18.58,
+          "mean": -1.37,
+          "n": 611
+        },
+        "e_s": {
+          "rms": 4.81,
+          "max_abs": 18.89,
+          "p95_abs": 9.95,
+          "mean": 1.43,
+          "n": 611
+        },
+        "e_psi": {
+          "rms": 4.52,
+          "max_abs": 8.79,
+          "p95_abs": 7.5,
+          "mean": -0.08,
+          "n": 611
+        }
+      },
+      "segments": {
+        "直線": {
+          "e_y": {
+            "rms": 7.92,
+            "max_abs": 14.9,
+            "p95_abs": 14.66,
+            "mean": -2.88,
+            "n": 250
+          },
+          "e_s": {
+            "rms": 4.92,
+            "max_abs": 10.8,
+            "p95_abs": 9.75,
+            "mean": 3.26,
+            "n": 250
+          },
+          "e_psi": {
+            "rms": 3.47,
+            "max_abs": 6.0,
+            "p95_abs": 5.36,
+            "mean": 0.38,
+            "n": 250
+          },
+          "length_mm": 997
+        },
+        "進彎 0–300 mm": {
+          "e_y": {
+            "rms": 10.08,
+            "max_abs": 14.29,
+            "p95_abs": 14.24,
+            "mean": 6.92,
+            "n": 73
+          },
+          "e_s": {
+            "rms": 3.61,
+            "max_abs": 6.47,
+            "p95_abs": 6.14,
+            "mean": 2.77,
+            "n": 73
+          },
+          "e_psi": {
+            "rms": 4.93,
+            "max_abs": 7.84,
+            "p95_abs": 7.6,
+            "mean": -2.22,
+            "n": 73
+          },
+          "length_mm": 295
+        },
+        "穩定彎道": {
+          "e_y": {
+            "rms": 12.17,
+            "max_abs": 22.3,
+            "p95_abs": 20.99,
+            "mean": -2.23,
+            "n": 282
+          },
+          "e_s": {
+            "rms": 4.83,
+            "max_abs": 18.89,
+            "p95_abs": 10.88,
+            "mean": -0.32,
+            "n": 282
+          },
+          "e_psi": {
+            "rms": 5.12,
+            "max_abs": 8.79,
+            "p95_abs": 8.04,
+            "mean": 0.22,
+            "n": 282
+          },
+          "length_mm": 955
+        },
+        "出彎": {
+          "e_y": {
+            "rms": 1.76,
+            "max_abs": 2.2,
+            "p95_abs": 2.12,
+            "mean": 1.73,
+            "n": 6
+          },
+          "e_s": {
+            "rms": 9.49,
+            "max_abs": 12.8,
+            "p95_abs": 12.5,
+            "mean": -9.22,
+            "n": 6
+          },
+          "e_psi": {
+            "rms": 7.02,
+            "max_abs": 7.1,
+            "p95_abs": 7.1,
+            "mean": -7.02,
+            "n": 6
+          },
+          "length_mm": 8
+        }
+      },
+      "e_y_period_s": 15.9,
+      "smoothness": {
+        "dv_rms_mm_s_per_cycle": 0.83,
+        "dw_rms_rad_s_per_cycle": 0.005,
+        "step_limit_hit_pct": 0.3,
+        "yaw_limit_hit_pct": 0.0,
+        "wheel_cmd_min_max": [
+          12,
+          65
+        ]
+      },
+      "actuation": {
+        "yaw_rate_meas_minus_cmd_rms": 0.049,
+        "yaw_rate_cmd_rms": 0.053
+      },
+      "timing": {
+        "loop_period_median_s": 0.112,
+        "loop_period_p95_s": 0.122,
+        "leader_age_median_s": 0.021,
+        "leader_age_p95_s": 0.035,
+        "leader_age_max_s": 0.154
+      },
+      "min_leader_distance_mm": 555,
+      "final_s_mm": 1864,
+      "final_heading_deg": 97.1
+    },
+    "F1-F2_note": "n = 1 run per condition; F1 and F2 are two lanes, not repeats"
+  },
+  "D' 11/24 38 mm/s breadcrumb": {
+    "L": {
+      "all": {
+        "e_y": {
+          "rms": 1.98,
+          "max_abs": 4.6,
+          "p95_abs": 3.59,
+          "mean": -0.18,
+          "n": 577
+        },
+        "e_psi": {
+          "rms": 1.71,
+          "max_abs": 5.5,
+          "p95_abs": 3.2,
+          "mean": -0.04,
+          "n": 577
+        }
+      },
+      "e_y_period_s": 13.0,
+      "e_psi_period_s": 13.0,
+      "duration_s": 64.8
+    },
+    "F1": {
+      "all": {
+        "e_y": {
+          "rms": 7.04,
+          "max_abs": 14.27,
+          "p95_abs": 12.96,
+          "mean": -1.81,
+          "n": 585
+        },
+        "e_s": {
+          "rms": 6.33,
+          "max_abs": 23.57,
+          "p95_abs": 12.31,
+          "mean": 1.96,
+          "n": 585
+        },
+        "e_psi": {
+          "rms": 5.72,
+          "max_abs": 11.25,
+          "p95_abs": 10.38,
+          "mean": 0.39,
+          "n": 585
+        }
+      },
+      "segments": {
+        "直線": {
+          "e_y": {
+            "rms": 7.49,
+            "max_abs": 14.27,
+            "p95_abs": 13.76,
+            "mean": -2.41,
+            "n": 242
+          },
+          "e_s": {
+            "rms": 3.04,
+            "max_abs": 6.73,
+            "p95_abs": 6.23,
+            "mean": 2.22,
+            "n": 242
+          },
+          "e_psi": {
+            "rms": 4.61,
+            "max_abs": 9.44,
+            "p95_abs": 8.37,
+            "mean": -0.2,
+            "n": 242
+          },
+          "length_mm": 999
+        },
+        "進彎 0–300 mm": {
+          "e_y": {
+            "rms": 6.95,
+            "max_abs": 11.69,
+            "p95_abs": 11.35,
+            "mean": -3.73,
+            "n": 76
+          },
+          "e_s": {
+            "rms": 9.93,
+            "max_abs": 23.57,
+            "p95_abs": 17.41,
+            "mean": -2.76,
+            "n": 76
+          },
+          "e_psi": {
+            "rms": 7.7,
+            "max_abs": 11.25,
+            "p95_abs": 11.19,
+            "mean": 7.0,
+            "n": 76
+          },
+          "length_mm": 295
+        },
+        "穩定彎道": {
+          "e_y": {
+            "rms": 6.63,
+            "max_abs": 13.13,
+            "p95_abs": 12.92,
+            "mean": -0.71,
+            "n": 267
+          },
+          "e_s": {
+            "rms": 7.16,
+            "max_abs": 21.82,
+            "p95_abs": 12.31,
+            "mean": 3.07,
+            "n": 267
+          },
+          "e_psi": {
+            "rms": 5.97,
+            "max_abs": 10.79,
+            "p95_abs": 10.38,
+            "mean": -0.96,
+            "n": 267
+          },
+          "length_mm": 947
+        }
+      },
+      "e_y_period_s": 15.6,
+      "smoothness": {
+        "dv_rms_mm_s_per_cycle": 0.6,
+        "dw_rms_rad_s_per_cycle": 0.0053,
+        "step_limit_hit_pct": 0.0,
+        "yaw_limit_hit_pct": 0.0,
+        "wheel_cmd_min_max": [
+          3,
+          51
+        ]
+      },
+      "actuation": {
+        "yaw_rate_meas_minus_cmd_rms": 0.059,
+        "yaw_rate_cmd_rms": 0.065
+      },
+      "timing": {
+        "loop_period_median_s": 0.112,
+        "loop_period_p95_s": 0.122,
+        "leader_age_median_s": 0.023,
+        "leader_age_p95_s": 0.033,
+        "leader_age_max_s": 0.171
+      },
+      "min_leader_distance_mm": 475,
+      "final_s_mm": 1850,
+      "final_heading_deg": 91.5
+    },
+    "F2": {
+      "all": {
+        "e_y": {
+          "rms": 16.32,
+          "max_abs": 33.21,
+          "p95_abs": 30.72,
+          "mean": -5.43,
+          "n": 589
+        },
+        "e_s": {
+          "rms": 6.46,
+          "max_abs": 12.48,
+          "p95_abs": 10.51,
+          "mean": 5.64,
+          "n": 589
+        },
+        "e_psi": {
+          "rms": 8.19,
+          "max_abs": 15.86,
+          "p95_abs": 12.95,
+          "mean": 0.07,
+          "n": 589
+        }
+      },
+      "segments": {
+        "直線": {
+          "e_y": {
+            "rms": 13.45,
+            "max_abs": 24.21,
+            "p95_abs": 23.47,
+            "mean": -5.21,
+            "n": 244
+          },
+          "e_s": {
+            "rms": 6.57,
+            "max_abs": 12.48,
+            "p95_abs": 10.56,
+            "mean": 6.21,
+            "n": 244
+          },
+          "e_psi": {
+            "rms": 8.15,
+            "max_abs": 15.86,
+            "p95_abs": 13.42,
+            "mean": 1.6,
+            "n": 244
+          },
+          "length_mm": 999
+        },
+        "進彎 0–300 mm": {
+          "e_y": {
+            "rms": 23.55,
+            "max_abs": 33.21,
+            "p95_abs": 33.15,
+            "mean": -9.7,
+            "n": 71
+          },
+          "e_s": {
+            "rms": 7.59,
+            "max_abs": 11.46,
+            "p95_abs": 11.0,
+            "mean": 7.21,
+            "n": 71
+          },
+          "e_psi": {
+            "rms": 8.83,
+            "max_abs": 15.43,
+            "p95_abs": 14.81,
+            "mean": -6.02,
+            "n": 71
+          },
+          "length_mm": 297
+        },
+        "穩定彎道": {
+          "e_y": {
+            "rms": 16.4,
+            "max_abs": 31.51,
+            "p95_abs": 30.13,
+            "mean": -4.45,
+            "n": 272
+          },
+          "e_s": {
+            "rms": 6.06,
+            "max_abs": 10.86,
+            "p95_abs": 9.96,
+            "mean": 4.74,
+            "n": 272
+          },
+          "e_psi": {
+            "rms": 8.07,
+            "max_abs": 12.59,
+            "p95_abs": 12.19,
+            "mean": 0.27,
+            "n": 272
+          },
+          "length_mm": 951
+        }
+      },
+      "e_y_period_s": 15.6,
+      "smoothness": {
+        "dv_rms_mm_s_per_cycle": 0.66,
+        "dw_rms_rad_s_per_cycle": 0.0061,
+        "step_limit_hit_pct": 0.0,
+        "yaw_limit_hit_pct": 0.0,
+        "wheel_cmd_min_max": [
+          22,
+          69
+        ]
+      },
+      "actuation": {
+        "yaw_rate_meas_minus_cmd_rms": 0.083,
+        "yaw_rate_cmd_rms": 0.077
+      },
+      "timing": {
+        "loop_period_median_s": 0.112,
+        "loop_period_p95_s": 0.121,
+        "leader_age_median_s": 0.022,
+        "leader_age_p95_s": 0.031,
+        "leader_age_max_s": 0.149
+      },
+      "min_leader_distance_mm": 543,
+      "final_s_mm": 1859,
+      "final_heading_deg": 86.4
+    },
+    "F1-F2_note": "n = 1 run per condition; F1 and F2 are two lanes, not repeats"
+  }
+}

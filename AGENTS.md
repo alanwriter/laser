@@ -162,7 +162,9 @@
   **08:40:14Z 路徑 D 三車 breadcrumb 實跑完成、無安全停止，三台 STOP ACK、程序退出**；車上估計 F1 橫向最大 14 mm（11/18 為 30）、
   F2 最大 33 mm（11/18 為 22）。用實際 Leader 資料重播顯示 breadcrumb 參考車道只多 3–4 mm；±15–30 mm 主要是
   每台車自己 12–17 s 週期的擺動（解析版本也有）。影片 `IMG_8242.MOV` 與 Leader 時間對齊，斜拍無法量公分級誤差。
-  同晚 repo 把 breadcrumb 平滑視窗預設 160 → 300 mm（`0.3.1-dev+breadcrumb`，`--breadcrumb-window-mm`），**Pi 上仍是 0.3.0／160，未部署**。見 `analysis/2026-11-24-breadcrumb-path/README.md`。
+  同晚 repo 把 breadcrumb 平滑視窗預設 160 → 300 mm（`0.3.1-dev+breadcrumb`，`--breadcrumb-window-mm`），**Pi 上仍是 0.3.0／160，未部署**。
+- 2026-11-24 三次左轉（B、D、D'）控制器誤差分析在 `analysis/2026-11-24-turn-controller-errors/`（假設車上定位正確）：
+  Follower e_y RMS 4–16 mm、直線不比彎道小；三台都有 13–16 s 週期擺動；轉向實際偏差約等於命令本身，命令幾乎沒觸限幅。見 `analysis/2026-11-24-breadcrumb-path/README.md`。
   Pi 沒有 tmux；遠端用 `tail -f 輸入檔 | python3 -u …` 送提示字。
 
 ## 使用者偏好的試跑節奏

@@ -42,11 +42,11 @@ from leader_formation import (
 )
 from wave_path import WavePath, WavePathReference
 from turn_path import TurnPath, TurnPathReference
-from breadcrumb_path import BreadcrumbPath, LeaderTarget
+from breadcrumb_path import DEFAULT_SMOOTHING_WINDOW_MM, BreadcrumbPath, LeaderTarget
 
 
 ACTIVE_LEADER_MODES = frozenset({"velocity", "path"})
-NORMAL_FOLLOW_VERSION = "0.3.0-dev+breadcrumb"
+NORMAL_FOLLOW_VERSION = "0.3.1-dev+breadcrumb"
 
 
 @dataclass(frozen=True)
@@ -830,12 +830,15 @@ class BreadcrumbFormationTracker(PathFormationTracker):
 PATH_SOURCES = ("analytic", "breadcrumb")
 
 
-def make_tracker(plan: FormationPlan, profile: FollowerProfile, path_source: str = "analytic") -> FormationTracker:
+def make_tracker(plan: FormationPlan, profile: FollowerProfile, path_source: str = "analytic",
+                 breadcrumb_window_mm: float = DEFAULT_SMOOTHING_WINDOW_MM) -> FormationTracker:
     if path_source not in PATH_SOURCES:
         raise ValueError(f"path source must be one of {PATH_SOURCES}")
     if not profile.path_following:
         return FormationTracker(plan)
-    return BreadcrumbFormationTracker(plan) if path_source == "breadcrumb" else PathFormationTracker(plan)
+    if path_source == "breadcrumb":
+        return BreadcrumbFormationTracker(plan, BreadcrumbPath(smoothing_window_mm=breadcrumb_window_mm))
+    return PathFormationTracker(plan)
 
 
 def validate_plan(plan: FormationPlan) -> None:
@@ -908,10 +911,11 @@ def run_follow(
     profile: FollowerProfile = FOLLOWER_1,
     require_mpu_heading: bool = False,
     path_source: str = "analytic",
+    breadcrumb_window_mm: float = DEFAULT_SMOOTHING_WINDOW_MM,
 ) -> None:
     """Commission one follower, then follow only fresh and safe Leader packets."""
     validate_plan(plan)
-    tracker = make_tracker(plan, profile, path_source)
+    tracker = make_tracker(plan, profile, path_source, breadcrumb_window_mm)
     geometry = NanoGeometry.from_config_fields(link.request("CONFIG").fields)
     if require_mpu_heading:
         geometry.require_mpu_heading()
@@ -940,7 +944,8 @@ def run_follow(
                   reason="encoder counts before final-position RESET")
     logger.record("origin", started_at, follower=initial)
     print(f"{profile.short_name} CSV log: {logger.path}")
-    print(f"{profile.short_name} path source: {tracker.path_source}")
+    window = f", smoothing window {breadcrumb_window_mm:.0f} mm" if tracker.path_source == "breadcrumb" else ""
+    print(f"{profile.short_name} path source: {tracker.path_source}{window}")
     print(f"{profile.short_name} armed and listening. It remains stopped until three fresh, safe moving Leader packets arrive.")
     try:
         while True:
@@ -1038,9 +1043,11 @@ def build_parser(profile: FollowerProfile = FOLLOWER_1) -> argparse.ArgumentPars
         help=f"CSV destination; default is ~/pi_rover/logs/{profile.log_prefix}_<UTC timestamp>.csv",
     )
     parser.add_argument("--unlock", action="store_true", help="required before the explicit commissioning/follow confirmations")
-    parser.add_argument("--require-mpu-heading", action="store_true", help="Refuse to arm unless Nano CONFIG reports 100% gyro heading.")
+    parser.add_argument("--require-mpu-heading", action="store_true", help="Refuse to arm unless Nano CONFIG reports 100%% gyro heading.")
     parser.add_argument("--path-source", choices=PATH_SOURCES, default="analytic",
                         help="analytic: Leader's planned route; breadcrumb: route rebuilt from received Leader poses")
+    parser.add_argument("--breadcrumb-window-mm", type=float, default=DEFAULT_SMOOTHING_WINDOW_MM,
+                        help=f"breadcrumb tangent/curvature fit window along the Leader track (default {DEFAULT_SMOOTHING_WINDOW_MM:.0f})")
     return parser
 
 
@@ -1081,7 +1088,7 @@ def main(profile: FollowerProfile = FOLLOWER_1) -> int:
     try:
         link.open()
         run_follow(link, receiver, plan, args.test_pwm, args.test_duration_ms, args.log, profile,
-                   args.require_mpu_heading, args.path_source)
+                   args.require_mpu_heading, args.path_source, args.breadcrumb_window_mm)
         return 0
     except (RuntimeError, ValueError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

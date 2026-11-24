@@ -14,7 +14,7 @@ Follower 的路徑來源從「Leader 廣播的解析路線」改成可選擇的�
 - `pi_rover/breadcrumb_path.py`：`BreadcrumbPath` 提供與 `TurnPath` 相同的
   `pose_at_s()`、`project()`、`speed_ratio_at_s()`。
   - 每 20 mm 存一個 Leader 點；只保留 Follower 後方 1 m 以內的點。
-  - 切線與曲率：對廣播的 MPU 航向 ψ(s) 在 160 mm 視窗內做局部線性迴歸，
+  - 切線與曲率：對廣播的 MPU 航向 ψ(s) 在平滑視窗內做局部線性迴歸（初版 160 mm，11/24 晚改 300 mm），
     斜率即曲率 κ。沒有用相鄰點差分（20 mm 間距會把 mm 級雜訊放大成度級航向雜訊）。
   - 車道＝中心線沿左法向偏移 `d`；車道曲率 `κ/(1−dκ)`，速度比 `1−dκ`。
   - 第一個點之前：沿起始切線往後直線延伸（Follower 起點在 Leader 後方 400 mm）。
@@ -43,7 +43,9 @@ Follower 是理想差速車（與 `simulate_site.py` 相同），10 Hz。
 
 誤差都以 **Leader 實際走過的軌跡偏移後的車道** 為真值。
 
-## 結果（`summary.json`、`breadcrumb_vs_analytic_route_D.png`）
+## 結果（初版，平滑視窗 160 mm）
+
+> 下表是 160 mm 視窗的初版數字；`summary.json`、`breadcrumb_vs_analytic_route_D.png` 已改用 300 mm 重跑，見文末〈平滑視窗改為 300 mm〉。
 
 | 情境／來源 | 橫向誤差 中位／最大 F1、F2 (mm) | 沿路徑間距誤差 最大 F1、F2 (mm) | 車身最小間隙 L–F1、L–F2 (mm) | 終點航向 F1、F2 |
 |---|---|---|---|---|
@@ -189,3 +191,39 @@ Leader 自己兩趟偏離計畫都 ≤ 4.6 mm，所以兩種路徑來源的車�
 - 要再降低誤差，應該處理車子本身的擺動（Follower 橫向／航向增益與預視距離、Nano 左右差速迴路），
   而不是換曲率估計方式。`BreadcrumbPath(tangent_source="position")` 已加入並有測試，但**車上預設維持 heading 160**。
 - 要量真的地面誤差，需要固定的近俯視相機加上已量好的地面標記。
+
+## 追問：給更多餘量、加密點、帶計畫曲率，能不能逼近「一開始就給完整路徑」？
+
+都用 11/24（及 11/18）實際的 Leader 廣播資料重播，模擬 Follower、輪速延遲 0.4 s，量對理想車道的最大橫向誤差。
+腳本與輸出在 `variants/`（`replay_margin.py`、`replay_density.py`、`replay_intent.py` 與同名 `.txt`）。
+
+- **Leader 目標點放多遠（無／300／1000 mm）：完全沒差。** Follower 落後 400 mm，前方本來就有 400 mm 的實際軌跡，
+  永遠用不到 Leader 前方的點。
+- **Follower 落後多少：** 落後 200 mm 以上就飽和。視窗 300 時落後 100／50 mm 會升到約 4／9–10 mm（置中視窗需要前方約 150 mm 的已記錄軌跡）。
+- **點加密（40／20／10／5 mm）：幾乎沒差**（20 → 5 mm 只差 0.1–0.2 mm）。R800 弧每 20 mm 連直線只差 0.06 mm；
+  Leader 每 0.11 s 一筆（約 4 mm），再密也沒有新資訊。
+- **每點附帶 Leader 計畫曲率：沒有改善**（11/24：F1 3.0、F2 2.6 mm；不帶時 3.0／1.8）。
+- **結論：** 剩下 1–3 mm 的差距是 Leader 實際走的與計畫之間的偏差，被 breadcrumb 忠實照抄；兩者只有在 Leader
+  完美照計畫走時才會相同。要更接近，應改善 Leader 自己的循跡；Follower 端已沒有可擠的空間。
+  反過來，Leader 偏離計畫時 breadcrumb 明顯較好（detour 模擬 2–3 mm vs 99 mm），且不需要事先把路徑寫成公式，
+  符合任務層「途中發現目標、改派」的需求。代價：繼承 Leader 里程計誤差、依賴持續封包、Follower 需落後 ≥ 約 200 mm、
+  不支援 Leader 倒車或原地轉。
+
+## 平滑視窗改為 300 mm（2026-11-24 晚，程式 `0.3.1-dev+breadcrumb`）
+
+`BreadcrumbPath` 預設 `smoothing_window_mm` 由 160 改為 300；Follower 新增 `--breadcrumb-window-mm`（預設 300）可在現場調整。
+順手修正既有 bug：`--require-mpu-heading` 說明文字的「100%」讓 `--help` 崩潰（argparse 格式字元），改為 `100%%`。
+**尚未部署到 Pi、尚未實車。**
+
+| 用 11/24 Leader 資料重播（輪速延遲 0.4 s） | F1 最大 | F2 最大 | F1 曲率 RMS 誤差 |
+|---|---|---|---|
+| 160 mm（11/24 實跑） | 3.5 mm | 4.0 mm | 0.96 /m |
+| **300 mm（新預設）** | **3.0 mm** | **1.8 mm** | 0.66 /m |
+| 500／700 mm | 6.9／14.8 mm | 5.3／13.5 mm | — |
+
+11/18 Leader 資料：160 → 300 為 F1 4.6 → 2.8、F2 5.2 → 2.9 mm。
+
+代價（重跑 `simulate_breadcrumb.py`，無雜訊理想 Leader）：進彎轉折被抹開更多，沿路徑間距誤差最大值 F1 11 → 22 mm、
+F2 6 → 11 mm，終點航向 89.1° → 88.0°；橫向誤差仍 ≤ 3.6 mm，六種情境都沒有安全停止。
+也就是說，真實 Leader 有擺動時 300 較好，完全理想時 160 較好；實車取 300。
+這些改善都是 mm 級，仍遠小於實車 Follower 自身 ±15–30 mm 的慢速擺動。

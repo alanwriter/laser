@@ -44,6 +44,7 @@ LANES = {"F1": 400.0, "F2": -400.0}
 COLORS = {"F1": "#2563eb", "F2": "#ea580c"}
 VARIANTS = {
     "heading 160 (ran 11/24)": dict(tangent_source="heading", smoothing_window_mm=160.0),
+    "heading 300 (default from 11/24 eve)": dict(tangent_source="heading", smoothing_window_mm=300.0),
     "heading 400": dict(tangent_source="heading", smoothing_window_mm=400.0),
     "position 300": dict(tangent_source="position", smoothing_window_mm=300.0),
     "position 400": dict(tangent_source="position", smoothing_window_mm=400.0),

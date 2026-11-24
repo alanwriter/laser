@@ -59,6 +59,9 @@ class LeaderTarget:
 
 
 TANGENT_SOURCES = ("heading", "position")
+# 160 mm ran on 2026-11-24; a replay of that run's Leader data gave the
+# smallest follower error near 300 mm (500 mm already blurs the turn entry).
+DEFAULT_SMOOTHING_WINDOW_MM = 300.0
 
 
 def _quadratic_derivatives(u: list[float], v: list[float]) -> tuple[float, float] | None:
@@ -87,7 +90,7 @@ class BreadcrumbPath:
     def __init__(
         self,
         spacing_mm: float = 20.0,
-        smoothing_window_mm: float = 160.0,
+        smoothing_window_mm: float = DEFAULT_SMOOTHING_WINDOW_MM,
         keep_behind_mm: float = 1000.0,
         max_extension_mm: float = 400.0,
         max_jump_mm: float = 300.0,

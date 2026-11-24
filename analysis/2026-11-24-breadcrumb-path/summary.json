@@ -88,51 +88,51 @@
       "controller_stops": {},
       "F1": {
         "lateral_mm_median_max": [
-          0.3,
-          2.6
+          0.5,
+          3.6
         ],
         "along_mm_median_max": [
           0.0,
-          11.3
+          22.4
         ],
         "heading_deg_median_max": [
-          0.2,
-          1.6
+          0.3,
+          3.2
         ],
         "curvature_err_per_m_median_max": [
           0.0,
-          1.334
+          1.326
         ],
         "wheel_cmd_mm_s": [
           15,
           38
         ],
-        "final_heading_deg": 89.1,
-        "min_mpu_to_leader_mm": 487,
+        "final_heading_deg": 88.0,
+        "min_mpu_to_leader_mm": 488,
         "min_body_gap_to_leader_mm": 246
       },
       "F2": {
         "lateral_mm_median_max": [
-          0.5,
-          2.8
+          1.0,
+          3.0
         ],
         "along_mm_median_max": [
           0.1,
-          5.6
+          11.4
         ],
         "heading_deg_median_max": [
           0.0,
-          0.8
+          1.8
         ],
         "curvature_err_per_m_median_max": [
           0.0,
-          0.42
+          0.436
         ],
         "wheel_cmd_mm_s": [
           38,
           61
         ],
-        "final_heading_deg": 89.1,
+        "final_heading_deg": 88.1,
         "min_mpu_to_leader_mm": 566,
         "min_body_gap_to_leader_mm": 287
       },
@@ -197,54 +197,54 @@
       "F1": {
         "lateral_mm_median_max": [
           0.7,
-          1.7
+          4.2
         ],
         "along_mm_median_max": [
-          2.3,
-          16.2
+          3.4,
+          25.3
         ],
         "heading_deg_median_max": [
           0.2,
-          1.9
+          3.6
         ],
         "curvature_err_per_m_median_max": [
-          0.087,
-          1.514
+          0.054,
+          1.41
         ],
         "wheel_cmd_mm_s": [
           13,
-          41
+          40
         ],
-        "final_heading_deg": 88.8,
+        "final_heading_deg": 87.8,
         "min_mpu_to_leader_mm": 484,
-        "min_body_gap_to_leader_mm": 244
+        "min_body_gap_to_leader_mm": 246
       },
       "F2": {
         "lateral_mm_median_max": [
-          0.5,
-          1.2
+          0.6,
+          3.3
         ],
         "along_mm_median_max": [
           1.4,
-          9.0
+          14.0
         ],
         "heading_deg_median_max": [
           0.1,
-          1.1
+          1.7
         ],
         "curvature_err_per_m_median_max": [
-          0.022,
-          0.413
+          0.012,
+          0.43
         ],
         "wheel_cmd_mm_s": [
-          35,
-          63
+          36,
+          62
         ],
-        "final_heading_deg": 88.4,
-        "min_mpu_to_leader_mm": 563,
+        "final_heading_deg": 87.5,
+        "min_mpu_to_leader_mm": 564,
         "min_body_gap_to_leader_mm": 286
       },
-      "F1-F2_min_body_gap_mm": 648
+      "F1-F2_min_body_gap_mm": 649
     },
     "detour/analytic": {
       "controller_stops": {},
@@ -304,55 +304,55 @@
       "controller_stops": {},
       "F1": {
         "lateral_mm_median_max": [
-          0.8,
-          1.7
+          1.8,
+          3.1
         ],
         "along_mm_median_max": [
-          0.5,
-          9.5
+          0.6,
+          18.8
         ],
         "heading_deg_median_max": [
           0.0,
-          1.5
+          2.8
         ],
         "curvature_err_per_m_median_max": [
           0.0,
-          1.05
+          1.052
         ],
         "wheel_cmd_mm_s": [
           18,
           38
         ],
-        "final_heading_deg": 88.7,
+        "final_heading_deg": 87.7,
         "min_mpu_to_leader_mm": 498,
         "min_body_gap_to_leader_mm": 253
       },
       "F2": {
         "lateral_mm_median_max": [
-          1.1,
-          1.9
+          0.8,
+          2.7
         ],
         "along_mm_median_max": [
-          0.6,
-          5.1
+          0.3,
+          10.1
         ],
         "heading_deg_median_max": [
           0.0,
-          0.9
+          1.6
         ],
         "curvature_err_per_m_median_max": [
           0.0,
-          0.382
+          0.396
         ],
         "wheel_cmd_mm_s": [
           38,
           58
         ],
-        "final_heading_deg": 88.7,
+        "final_heading_deg": 87.7,
         "min_mpu_to_leader_mm": 566,
         "min_body_gap_to_leader_mm": 287
       },
-      "F1-F2_min_body_gap_mm": 649
+      "F1-F2_min_body_gap_mm": 650
     }
   },
   "breadcrumb_buffer_end_of_ideal_run": {

@@ -930,7 +930,7 @@ def build_parser() -> argparse.ArgumentParser:
     wave.add_argument("--test-pwm", type=int, default=80, help="Pre-wave encoder-test PWM, 1..165 (default 80).")
     wave.add_argument("--test-duration-ms", type=int, default=800, help="Pre-wave encoder-test duration, 50..1200 ms (default 800).")
     wave.add_argument("--unlock", action="store_true")
-    wave.add_argument("--require-mpu-heading", action="store_true", help="Refuse to start unless Nano CONFIG reports 100% gyro heading.")
+    wave.add_argument("--require-mpu-heading", action="store_true", help="Refuse to start unless Nano CONFIG reports 100%% gyro heading.")
     turn = actions.add_parser("turn", help="Pi-planned 1.5 m straight, 90-degree left arc, 1 m exit.")
     turn.add_argument("--straight-mm", type=float, default=1500.0)
     turn.add_argument("--radius-mm", type=float, default=1200.0)

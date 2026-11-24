@@ -1,6 +1,6 @@
-# 2026-11-24 軌跡重建路徑（breadcrumb）離線驗證：路徑 D
+# 2026-11-24 軌跡重建路徑（breadcrumb）：路徑 D 模擬與第一次實跑
 
-**狀態：只有離線模擬與單元測試，尚未部署到 Pi，也沒有實車行走。**
+**狀態：離線模擬＋單元測試；2026-11-24 08:40:14Z 三車實跑一趟完成（見文末），數字皆為車上估計。**
 
 ## 改了什麼
 
@@ -90,3 +90,51 @@ cd pi_rover && python3 -m unittest -q   # 61 tests
 
 只在 F1/F2 加 `--path-source breadcrumb`，其餘照 RUNBOOK；Leader 需部署本分支的
 `leader_formation.py` 才會送 `next_target`（沒送也能跑，只是最新點之後的延伸改用最後曲率）。
+
+## 實跑 2026-11-24 08:40:14Z：路徑 D、F1/F2 breadcrumb，完成，無安全停止
+
+部署：三台 Pi 先把舊的 `leader_formation.py`／`follower_formation.py` 備份到
+`~/pi_rover/backups/2026-11-24-pre-breadcrumb/`，再複製本分支的 `leader_formation.py`、
+`follower_formation.py`、`breadcrumb_path.py`（SHA-256 前綴 `bdb82167`／`02798f57`／`b43f910b`，與 repo 相同），
+三台 `--version` 為 `0.3.0-dev+breadcrumb`。韌體未動（11/18 定版）。
+
+指令（三台 Pi 沒有 tmux，用 `tail -f 輸入檔 | python3 -u …` 送提示字）：
+- Leader：`leader_formation.py --port … turn --unlock --straight-mm 600 --radius-mm 800 --exit-mm 400 --speed-mm-s 38
+  --test-pwm 60 --test-duration-ms 600 --require-mpu-heading --broadcast 192.168.1.199:5005 --broadcast 192.168.1.175:5005`
+- F1／F2：`follower_formation.py`／`follower2_formation.py --port … --leader-host 192.168.1.166 --unlock --test-pwm 60
+  --test-duration-ms 600 --require-mpu-heading --path-source breadcrumb`（起點預設 (−400, ±400)）
+
+預檢：三台 IMU present=1、位址 104；靜止校正後逐台接地 PWM 60／600 ms：Leader 178／170、33.5 mm、−0.8°；
+F1 725／565、123.5 mm、−14.8°（右輪開環仍偏弱，但比 11/18 的 928／382 好）；F2 986／1039、194.3 mm、+3.6°。
+全部 `encoder_preflight=1`、fault 0。操作者一次確認後依序送 `FOLLOWER-1`、`FOLLOWER-2`、`WAVE-3`。
+啟動 F2 時 Wi-Fi 短暫中斷一次，指令沒有送達，重送後正常；行走期間沒有網路異常。
+
+Leader 約 63 s 正常完成、Nano STOP；F1/F2 隨即停止等待，之後以 SIGINT 結束，三台 STOP ACK、程序退出。
+
+和 11/18 同路線的解析路徑實跑（`../2026-11-18-left-turn-site/real_run_123302Z`）比較，
+兩趟都以同一條理想車道（R800 ±400）計算（`real_run_084014Z/metrics.json`、`onboard_comparison.png`）：
+
+| | 11/24 breadcrumb F1 | 11/18 analytic F1 | 11/24 breadcrumb F2 | 11/18 analytic F2 |
+|---|---|---|---|---|
+| 終點（車上） | (1000, 797) | (1002, 799) | (1787, 803) | (1801, 808) |
+| 終點航向 | **91.5°** | 96.2° | **86.4°** | 97.1° |
+| 對理想車道橫向 中位／最大 | 5.0／**13.9** mm | 6.4／30.1 mm | 13.6／**32.5** mm | 8.4／22.3 mm |
+| 控制器進度誤差範圍 | −14～+24 mm | −15～+34 mm | −9～+13 mm | −19～+11 mm |
+| 離 Leader 最近（MPU） | 475 mm | 480 mm | 543 mm | 555 mm |
+| 單輪命令 | 3–51 | 6–48 | 22–69 | 12–65 |
+
+Leader 自己兩趟偏離計畫都 ≤ 4.6 mm，所以兩種路徑來源的車道幾何本來就接近；這趟主要驗證
+「Follower 只靠記錄的 Leader 軌跡也能完成同一個編隊」。
+
+觀察：
+1. **可行。** 只靠 Leader 廣播的位姿重建車道，三車完成左轉、沒有安全停止；終點與設計點差 ≤ 13 mm（車上估計），
+   終點航向比 11/18 更接近 90°（11/18 多轉 6–7°）。
+2. **F1 變好、F2 變差。** F1 橫向最大 30 → 14 mm；F2 中位 8 → 14 mm、最大 22 → 33 mm，
+   且呈約 14 s 週期（約 0.5 m）擺動，在彎道中振幅變大。
+3. **曲率估計比模擬雜很多**（右下圖）。在直線上也有 ±0.5 /m 的起伏，彎道中 F1 的車道曲率在 1.2–5.5 /m 之間擺
+   （真值 2.5）。Leader 位置雖然只偏離計畫 ≤ 5 mm，航向卻有 ±2° 的來回修正；breadcrumb 把這個擺動原樣當成路徑曲率，
+   F1 內側車道（d=+400）再放大約 2 倍。模擬只放了白雜訊，沒有這種低頻擺動，所以沒看到。
+   F2 擺動的週期與曲率起伏相近，推測曲率前饋是主因之一；這一點還沒有逐項拆開驗證。
+4. 下一步可試：平滑視窗從 160 加大到約 400 mm，或改用位置擬合曲率；先用這趟的 Leader CSV 離線重播比較，再決定是否再跑。
+
+限制：全部是車上里程＋MPU 估計，不是地面真值；本趟沒有影片紀錄（若操作者有拍，再補對時）。

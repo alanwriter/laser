@@ -1,0 +1,140 @@
+{
+  "2026-11-24 breadcrumb": {
+    "leader_end": [
+      1400.9,
+      1202.3,
+      87.5
+    ],
+    "leader_dev_from_plan_mm_median_max": [
+      1.6,
+      4.6
+    ],
+    "F1": {
+      "end_world": [
+        1000,
+        797,
+        91.5
+      ],
+      "lat_vs_ideal_lane_median_max": [
+        5.0,
+        13.9
+      ],
+      "lat_vs_leader_track_lane_median_max": [
+        5.1,
+        14.3
+      ],
+      "controller_lat_median_max": [
+        5.1,
+        14.3
+      ],
+      "controller_along_min_max": [
+        -14.2,
+        23.6
+      ],
+      "min_leader_distance_mm": 475,
+      "wheel_cmd_min_max": [
+        3,
+        51
+      ],
+      "control_rows": 585
+    },
+    "F2": {
+      "end_world": [
+        1787,
+        803,
+        86.4
+      ],
+      "lat_vs_ideal_lane_median_max": [
+        13.6,
+        32.5
+      ],
+      "lat_vs_leader_track_lane_median_max": [
+        13.2,
+        33.2
+      ],
+      "controller_lat_median_max": [
+        13.2,
+        33.2
+      ],
+      "controller_along_min_max": [
+        -8.5,
+        12.5
+      ],
+      "min_leader_distance_mm": 543,
+      "wheel_cmd_min_max": [
+        22,
+        69
+      ],
+      "control_rows": 589
+    }
+  },
+  "2026-11-18 analytic": {
+    "leader_end": [
+      1399.7,
+      1202.0,
+      86.2
+    ],
+    "leader_dev_from_plan_mm_median_max": [
+      1.9,
+      4.6
+    ],
+    "F1": {
+      "end_world": [
+        1002,
+        799,
+        96.2
+      ],
+      "lat_vs_ideal_lane_median_max": [
+        6.4,
+        30.1
+      ],
+      "lat_vs_leader_track_lane_median_max": [
+        6.6,
+        32.7
+      ],
+      "controller_lat_median_max": [
+        6.4,
+        30.1
+      ],
+      "controller_along_min_max": [
+        -15.0,
+        33.7
+      ],
+      "min_leader_distance_mm": 480,
+      "wheel_cmd_min_max": [
+        6,
+        48
+      ],
+      "control_rows": 606
+    },
+    "F2": {
+      "end_world": [
+        1801,
+        808,
+        97.1
+      ],
+      "lat_vs_ideal_lane_median_max": [
+        8.4,
+        22.3
+      ],
+      "lat_vs_leader_track_lane_median_max": [
+        7.1,
+        21.0
+      ],
+      "controller_lat_median_max": [
+        8.4,
+        22.3
+      ],
+      "controller_along_min_max": [
+        -18.9,
+        10.8
+      ],
+      "min_leader_distance_mm": 555,
+      "wheel_cmd_min_max": [
+        12,
+        65
+      ],
+      "control_rows": 611
+    }
+  }
+}

@@ -158,8 +158,10 @@
 - 2026-11-24 分支 `breadcrumb-path/v0.1`：Follower 可選 `--path-source breadcrumb`，把收到的 Leader
   位姿記成軌跡、局部擬合 MPU 航向得切線／曲率，再偏移成自己的車道；控制律不變，預設仍是
   `analytic`（舊版標籤 `analytic-path-2026-11-24`）。Leader 封包新增 `next_target`（前方 300 mm）。
-  **只有路徑 D 離線模擬與單元測試，尚未部署 Pi、未實車行走。** 見
-  `analysis/2026-11-24-breadcrumb-path/README.md`。
+  三台 Pi 已部署此分支（舊檔備份在 `~/pi_rover/backups/2026-11-24-pre-breadcrumb/`）。
+  **08:40:14Z 路徑 D 三車 breadcrumb 實跑完成、無安全停止，三台 STOP ACK、程序退出**；車上估計 F1 橫向最大 14 mm（11/18 為 30）、
+  F2 最大 33 mm（11/18 為 22），Leader 航向擺動讓曲率估計很雜。見 `analysis/2026-11-24-breadcrumb-path/README.md`。
+  Pi 沒有 tmux；遠端用 `tail -f 輸入檔 | python3 -u …` 送提示字。
 
 ## 使用者偏好的試跑節奏
 

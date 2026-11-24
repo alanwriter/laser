@@ -58,6 +58,29 @@ class LeaderTarget:
         return {name: round(getattr(self, name), 2) for name in self.__dataclass_fields__}
 
 
+TANGENT_SOURCES = ("heading", "position")
+
+
+def _quadratic_derivatives(u: list[float], v: list[float]) -> tuple[float, float] | None:
+    """Least-squares v = a + b u + c u^2; return (v'(0), v''(0)) or None."""
+    sums = [sum(x ** k for x in u) for k in range(5)]
+    rhs = [sum(vi * ui ** k for ui, vi in zip(u, v)) for k in range(3)]
+    m = [[sums[0], sums[1], sums[2]], [sums[1], sums[2], sums[3]], [sums[2], sums[3], sums[4]]]
+    det = (m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+           - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+           + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]))
+    if abs(det) < 1e-6:
+        return None
+    def solve(col: int) -> float:
+        mm = [row[:] for row in m]
+        for r in range(3):
+            mm[r][col] = rhs[r]
+        return (mm[0][0] * (mm[1][1] * mm[2][2] - mm[1][2] * mm[2][1])
+                - mm[0][1] * (mm[1][0] * mm[2][2] - mm[1][2] * mm[2][0])
+                + mm[0][2] * (mm[1][0] * mm[2][1] - mm[1][1] * mm[2][0])) / det
+    return solve(1), 2.0 * solve(2)
+
+
 class BreadcrumbPath:
     """Leader trajectory with the TurnPath interface used by the path follower."""
 
@@ -70,7 +93,10 @@ class BreadcrumbPath:
         max_jump_mm: float = 300.0,
         max_curvature_per_mm: float = 1.0 / 250.0,
         projection_window_mm: float = 500.0,
+        tangent_source: str = "heading",
     ) -> None:
+        if tangent_source not in TANGENT_SOURCES:
+            raise ValueError(f"tangent source must be one of {TANGENT_SOURCES}")
         if not 5.0 <= spacing_mm <= 100.0:
             raise ValueError("breadcrumb spacing must be 5..100 mm")
         if smoothing_window_mm < 2.0 * spacing_mm:
@@ -82,6 +108,7 @@ class BreadcrumbPath:
         self.max_jump_mm = max_jump_mm
         self.max_curvature_per_mm = max_curvature_per_mm
         self.projection_window_mm = projection_window_mm
+        self.tangent_source = tangent_source
         self._s: list[float] = []
         self._x: list[float] = []
         self._y: list[float] = []
@@ -167,6 +194,18 @@ class BreadcrumbPath:
                 tangent.append(self._psi[i])
                 curvature.append(0.0)
                 continue
+            if self.tangent_source == "position":
+                u = [s - self._s[i] for s in self._s[lo:hi + 1]]
+                dx = _quadratic_derivatives(u, self._x[lo:hi + 1])
+                dy = _quadratic_derivatives(u, self._y[lo:hi + 1])
+                if dx is not None and dy is not None and math.hypot(dx[0], dy[0]) > 0.5:
+                    (x1, x2), (y1, y2) = dx, dy
+                    direction = math.atan2(y1, x1)
+                    reference = tangent[-1] if tangent else self._psi[i]
+                    kappa = (x1 * y2 - y1 * x2) / math.hypot(x1, y1) ** 3
+                    tangent.append(reference + _wrap_radians(direction - reference))
+                    curvature.append(max(-self.max_curvature_per_mm, min(self.max_curvature_per_mm, kappa)))
+                    continue
             mean_s = sum(self._s[lo:hi + 1]) / count
             mean_psi = sum(self._psi[lo:hi + 1]) / count
             sxx = sum((s - mean_s) ** 2 for s in self._s[lo:hi + 1])

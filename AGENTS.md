@@ -160,7 +160,8 @@
   `analytic`（舊版標籤 `analytic-path-2026-11-24`）。Leader 封包新增 `next_target`（前方 300 mm）。
   三台 Pi 已部署此分支（舊檔備份在 `~/pi_rover/backups/2026-11-24-pre-breadcrumb/`）。
   **08:40:14Z 路徑 D 三車 breadcrumb 實跑完成、無安全停止，三台 STOP ACK、程序退出**；車上估計 F1 橫向最大 14 mm（11/18 為 30）、
-  F2 最大 33 mm（11/18 為 22），Leader 航向擺動讓曲率估計很雜。見 `analysis/2026-11-24-breadcrumb-path/README.md`。
+  F2 最大 33 mm（11/18 為 22）。用實際 Leader 資料重播顯示 breadcrumb 參考車道只多 3–4 mm；±15–30 mm 主要是
+  每台車自己 12–17 s 週期的擺動（解析版本也有）。影片 `IMG_8242.MOV` 與 Leader 時間對齊，斜拍無法量公分級誤差。見 `analysis/2026-11-24-breadcrumb-path/README.md`。
   Pi 沒有 tmux；遠端用 `tail -f 輸入檔 | python3 -u …` 送提示字。
 
 ## 使用者偏好的試跑節奏

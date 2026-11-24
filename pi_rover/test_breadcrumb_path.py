@@ -59,6 +59,16 @@ class BreadcrumbPathTests(unittest.TestCase):
             self.assertAlmostEqual(path.speed_ratio_at_s(s, offset),
                                    ROUTE_D.speed_ratio_at_s(s, offset), delta=0.02)
 
+    def test_position_tangent_source_matches_arc(self) -> None:
+        path = BreadcrumbPath(tangent_source="position", smoothing_window_mm=300.0)
+        feed(path, ROUTE_D, 1800.0)
+        s = 600.0 + 800.0 * math.pi / 4
+        self.assertAlmostEqual(path.centre_curvature_at_s(s), 1 / 800.0, delta=0.03 / 800.0)
+        self.assertAlmostEqual(path.pose_at_s(s, 0.0)[2], 45.0, delta=0.5)
+        self.assertAlmostEqual(path.centre_curvature_at_s(300.0), 0.0, delta=1e-6)
+        with self.assertRaises(ValueError):
+            BreadcrumbPath(tangent_source="spline")
+
     def test_projection_matches_analytic_route(self) -> None:
         path = BreadcrumbPath()
         feed(path, ROUTE_D, 1800.0)

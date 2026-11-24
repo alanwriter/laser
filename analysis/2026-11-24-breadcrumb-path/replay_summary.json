@@ -1,0 +1,362 @@
+{
+  "part1_curvature_error_vs_ideal_lane_at_real_follower_s": {
+    "F1": {
+      "heading 160 (ran 11/24)": {
+        "rms_per_m": 0.959,
+        "max_abs_per_m": 3.008
+      },
+      "heading 400": {
+        "rms_per_m": 0.464,
+        "max_abs_per_m": 1.377
+      },
+      "position 300": {
+        "rms_per_m": 0.781,
+        "max_abs_per_m": 1.865
+      },
+      "position 400": {
+        "rms_per_m": 0.616,
+        "max_abs_per_m": 1.337
+      }
+    },
+    "F2": {
+      "heading 160 (ran 11/24)": {
+        "rms_per_m": 0.235,
+        "max_abs_per_m": 0.659
+      },
+      "heading 400": {
+        "rms_per_m": 0.145,
+        "max_abs_per_m": 0.493
+      },
+      "position 300": {
+        "rms_per_m": 0.186,
+        "max_abs_per_m": 0.523
+      },
+      "position 400": {
+        "rms_per_m": 0.162,
+        "max_abs_per_m": 0.517
+      }
+    }
+  },
+  "part2_closed_loop_lateral_error_vs_ideal_lane": {
+    "11/24 Leader | wheel lag 0.0 s | analytic": {
+      "F1": {
+        "lat_median_max_mm": [
+          0.3,
+          0.5
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.0,
+          0.8
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.0 s | breadcrumb heading 160 (ran 11/24)": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.0,
+          3.0
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          1.0,
+          2.8
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.0 s | breadcrumb heading 400": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.2,
+          4.8
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.6,
+          3.2
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.0 s | breadcrumb position 300": {
+      "F1": {
+        "lat_median_max_mm": [
+          0.6,
+          2.8
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.8,
+          2.5
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.0 s | breadcrumb position 400": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.0,
+          3.7
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.6,
+          2.9
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.4 s | analytic": {
+      "F1": {
+        "lat_median_max_mm": [
+          0.4,
+          1.5
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.2,
+          1.5
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.4 s | breadcrumb heading 160 (ran 11/24)": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.1,
+          3.5
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          1.3,
+          4.0
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.4 s | breadcrumb heading 400": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.3,
+          4.4
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.5,
+          2.6
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.4 s | breadcrumb position 300": {
+      "F1": {
+        "lat_median_max_mm": [
+          0.7,
+          2.8
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.8,
+          2.8
+        ],
+        "stop": ""
+      }
+    },
+    "11/24 Leader | wheel lag 0.4 s | breadcrumb position 400": {
+      "F1": {
+        "lat_median_max_mm": [
+          0.8,
+          3.3
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.7,
+          2.9
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.0 s | analytic": {
+      "F1": {
+        "lat_median_max_mm": [
+          0.2,
+          0.3
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.0,
+          0.6
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.0 s | breadcrumb heading 160 (ran 11/24)": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.4,
+          4.3
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          1.1,
+          4.6
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.0 s | breadcrumb heading 400": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.0,
+          5.1
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.9,
+          4.1
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.0 s | breadcrumb position 300": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.2,
+          3.0
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          1.2,
+          3.3
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.0 s | breadcrumb position 400": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.0,
+          3.4
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.9,
+          3.4
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.4 s | analytic": {
+      "F1": {
+        "lat_median_max_mm": [
+          0.3,
+          1.5
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.0,
+          1.6
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.4 s | breadcrumb heading 160 (ran 11/24)": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.6,
+          4.6
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          1.3,
+          5.2
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.4 s | breadcrumb heading 400": {
+      "F1": {
+        "lat_median_max_mm": [
+          0.8,
+          4.6
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          0.9,
+          3.9
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.4 s | breadcrumb position 300": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.4,
+          3.7
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          1.3,
+          4.1
+        ],
+        "stop": ""
+      }
+    },
+    "11/18 Leader | wheel lag 0.4 s | breadcrumb position 400": {
+      "F1": {
+        "lat_median_max_mm": [
+          1.1,
+          3.6
+        ],
+        "stop": ""
+      },
+      "F2": {
+        "lat_median_max_mm": [
+          1.0,
+          3.5
+        ],
+        "stop": ""
+      }
+    }
+  }
+}

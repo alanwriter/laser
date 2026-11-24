@@ -42,10 +42,11 @@ from leader_formation import (
 )
 from wave_path import WavePath, WavePathReference
 from turn_path import TurnPath, TurnPathReference
+from breadcrumb_path import BreadcrumbPath, LeaderTarget
 
 
 ACTIVE_LEADER_MODES = frozenset({"velocity", "path"})
-NORMAL_FOLLOW_VERSION = "0.2.0-dev+left-turn"
+NORMAL_FOLLOW_VERSION = "0.3.0-dev+breadcrumb"
 
 
 @dataclass(frozen=True)
@@ -148,6 +149,7 @@ class LeaderFrame:
     has_motion_reference: bool = False
     formation_phase: str = "moving"
     path: WavePathReference | TurnPathReference | None = None
+    next_target: LeaderTarget | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +170,10 @@ class FormationControl:
     right_mm_per_second: int
     tracking_safe: bool
     stop_reason: str
+    path_source: str = ""
+    leader_progress_s_mm: float = 0.0
+    path_curvature_per_mm: float = 0.0
+    breadcrumb_points: int = 0
 
 
 FOLLOWER_LOG_STATUS_COLUMNS = tuple(RoverStatus.__dataclass_fields__)
@@ -318,6 +324,8 @@ def parse_leader_frame(payload: bytes, source_host: str, received_at: float) -> 
                     else WavePathReference.from_payload(frame["path"]))
         else:
             path = None
+        next_target = (LeaderTarget.from_payload(frame["next_target"])
+                       if frame.get("next_target") is not None else None)
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         raise ValueError(f"invalid leader packet: {error}") from error
     return LeaderFrame(
@@ -329,6 +337,7 @@ def parse_leader_frame(payload: bytes, source_host: str, received_at: float) -> 
         has_motion_reference=has_motion_reference,
         formation_phase=formation_phase,
         path=path,
+        next_target=next_target,
     )
 
 
@@ -375,6 +384,12 @@ class LeaderUdpReceiver:
 
 class FormationTracker:
     """Leader-frame controller; it neither opens USB nor communicates over UDP."""
+
+    requires_leader_path = False
+    path_source = "leader_body"
+
+    def observe_leader(self, leader: LeaderFrame) -> None:
+        """Called for every received Leader frame, even while waiting."""
 
     def __init__(self, plan: FormationPlan) -> None:
         self.plan = plan
@@ -638,29 +653,37 @@ class PathFormationTracker(FormationTracker):
     own path, rather than the instantaneous Leader heading.
     """
 
+    requires_leader_path = True
+    path_source = "analytic"
+
     def __init__(self, plan: FormationPlan) -> None:
         super().__init__(plan)
         self._path: WavePath | TurnPath | None = None
 
-    def control(self, leader: LeaderFrame, follower: RoverStatus) -> FormationControl:
+    def _resolve_path(self, leader: LeaderFrame) -> tuple[WavePath | TurnPath | BreadcrumbPath, float]:
+        """Return the route object and the Leader's progress ``s`` on it."""
         if leader.path is None or not leader.has_motion_reference:
             raise ValueError("path follower requires a wave path and motion reference")
         if self._path is not None and self._path.reference.geometry_key != leader.path.geometry_key:
             raise ValueError("follower wave path changed during a run")
         if self._path is None:
             self._path = TurnPath(leader.path) if isinstance(leader.path, TurnPathReference) else WavePath(leader.path)
-        path = self._path
-        assert path is not None
+        return self._path, leader.path.progress_s_mm
+
+    def _project(self, path: WavePath | TurnPath | BreadcrumbPath,
+                 x_mm: float, y_mm: float) -> tuple[float, float]:
+        return path.project(x_mm, y_mm, self.plan.offset_y_mm)
+
+    def control(self, leader: LeaderFrame, follower: RoverStatus) -> FormationControl:
+        path, leader_s = self._resolve_path(leader)
 
         # Offset X is an along-route gap; offset Y is a translation in the
         # experiment's initial frame.  A translated y(x) route has the same
         # tangent and curvature as Leader's planned route.
-        target_s = leader.path.progress_s_mm + self.plan.offset_x_mm
+        target_s = leader_s + self.plan.offset_x_mm
         target_x, target_y, _, _ = path.pose_at_s(target_s, self.plan.offset_y_mm)
         follower_x, follower_y, follower_heading = self._follower_world_pose(follower)
-        actual_s, signed_cross_track = path.project(
-            follower_x, follower_y, self.plan.offset_y_mm,
-        )
+        actual_s, signed_cross_track = self._project(path, follower_x, follower_y)
         _, _, path_heading, curvature = path.pose_at_s(actual_s, self.plan.offset_y_mm)
         progress_error = target_s - actual_s
         lateral_error = -signed_cross_track
@@ -759,7 +782,60 @@ class PathFormationTracker(FormationTracker):
             right_mm_per_second=right,
             tracking_safe=not stop_reason,
             stop_reason=stop_reason,
+            path_source=self.path_source,
+            leader_progress_s_mm=leader_s,
+            path_curvature_per_mm=curvature,
+            breadcrumb_points=path.point_count if isinstance(path, BreadcrumbPath) else 0,
         )
+
+
+class BreadcrumbFormationTracker(PathFormationTracker):
+    """Same path control law, but the route is the recorded Leader track.
+
+    Every received Leader pose is appended to a ``BreadcrumbPath``; Leader
+    progress is the recorded arc length instead of the planned ``s``.  An
+    analytic ``path`` in the packet is not needed and is ignored.
+    """
+
+    requires_leader_path = False
+    path_source = "breadcrumb"
+
+    def __init__(self, plan: FormationPlan, path: BreadcrumbPath | None = None) -> None:
+        super().__init__(plan)
+        self.breadcrumbs = path or BreadcrumbPath()
+        self._last_observed: LeaderFrame | None = None
+
+    def observe_leader(self, leader: LeaderFrame) -> None:
+        if leader is self._last_observed:
+            return
+        self._last_observed = leader
+        self.breadcrumbs.observe(
+            leader.status.x_mm, leader.status.y_mm, leader.status.heading_deg,
+            leader.next_target,
+        )
+
+    def _resolve_path(self, leader: LeaderFrame) -> tuple[BreadcrumbPath, float]:
+        if not leader.has_motion_reference:
+            raise ValueError("breadcrumb follower requires a Leader motion reference")
+        self.observe_leader(leader)
+        return self.breadcrumbs, self.breadcrumbs.leader_s_mm
+
+    def _project(self, path: WavePath | TurnPath | BreadcrumbPath,
+                 x_mm: float, y_mm: float) -> tuple[float, float]:
+        s, lateral = path.project(x_mm, y_mm, self.plan.offset_y_mm)
+        self.breadcrumbs.prune(s)
+        return s, lateral
+
+
+PATH_SOURCES = ("analytic", "breadcrumb")
+
+
+def make_tracker(plan: FormationPlan, profile: FollowerProfile, path_source: str = "analytic") -> FormationTracker:
+    if path_source not in PATH_SOURCES:
+        raise ValueError(f"path source must be one of {PATH_SOURCES}")
+    if not profile.path_following:
+        return FormationTracker(plan)
+    return BreadcrumbFormationTracker(plan) if path_source == "breadcrumb" else PathFormationTracker(plan)
 
 
 def validate_plan(plan: FormationPlan) -> None:
@@ -815,6 +891,13 @@ def leader_is_safe_for_settle(frame: LeaderFrame) -> bool:
     )
 
 
+def frame_has_reference(frame: LeaderFrame, tracker: FormationTracker, profile: FollowerProfile) -> bool:
+    """Path followers need Leader speed; analytic ones also need the route."""
+    if not profile.path_following:
+        return True
+    return frame.has_motion_reference and (frame.path is not None or not tracker.requires_leader_path)
+
+
 def run_follow(
     link: NanoLink,
     receiver: LeaderUdpReceiver,
@@ -824,9 +907,11 @@ def run_follow(
     log_path: Path | None,
     profile: FollowerProfile = FOLLOWER_1,
     require_mpu_heading: bool = False,
+    path_source: str = "analytic",
 ) -> None:
     """Commission one follower, then follow only fresh and safe Leader packets."""
     validate_plan(plan)
+    tracker = make_tracker(plan, profile, path_source)
     geometry = NanoGeometry.from_config_fields(link.request("CONFIG").fields)
     if require_mpu_heading:
         geometry.require_mpu_heading()
@@ -844,7 +929,6 @@ def run_follow(
     initial = parse_status_fields(link.request("STATUS").fields)
     if not initial.ready_for_path:
         raise RuntimeError(f"{profile.short_name} RESET did not preserve ready state; refusing formation control.")
-    tracker = PathFormationTracker(plan) if profile.path_following else FormationTracker(plan)
     latest: LeaderFrame | None = None
     follower: RoverStatus | None = None
     control: FormationControl | None = None
@@ -856,15 +940,15 @@ def run_follow(
                   reason="encoder counts before final-position RESET")
     logger.record("origin", started_at, follower=initial)
     print(f"{profile.short_name} CSV log: {logger.path}")
+    print(f"{profile.short_name} path source: {tracker.path_source}")
     print(f"{profile.short_name} armed and listening. It remains stopped until three fresh, safe moving Leader packets arrive.")
     try:
         while True:
             frame = receiver.receive_latest(plan.control_period_s)
             if frame:
                 latest = frame
-                if leader_is_safe_and_moving(frame) and (
-                    not profile.path_following or (frame.path is not None and frame.has_motion_reference)
-                ):
+                tracker.observe_leader(frame)
+                if leader_is_safe_and_moving(frame) and frame_has_reference(frame, tracker, profile):
                     consecutive_active_frames += 1
                 elif not leader_is_safe_for_settle(frame):
                     consecutive_active_frames = 0
@@ -873,7 +957,7 @@ def run_follow(
                 leader_is_safe_and_moving(latest)
                 or (leader_is_safe_for_settle(latest) and consecutive_active_frames >= 3)
             )
-            if profile.path_following and latest and (latest.path is None or not latest.has_motion_reference):
+            if latest and not frame_has_reference(latest, tracker, profile):
                 leader_allowed = False
             if (
                 stale
@@ -955,6 +1039,8 @@ def build_parser(profile: FollowerProfile = FOLLOWER_1) -> argparse.ArgumentPars
     )
     parser.add_argument("--unlock", action="store_true", help="required before the explicit commissioning/follow confirmations")
     parser.add_argument("--require-mpu-heading", action="store_true", help="Refuse to arm unless Nano CONFIG reports 100% gyro heading.")
+    parser.add_argument("--path-source", choices=PATH_SOURCES, default="analytic",
+                        help="analytic: Leader's planned route; breadcrumb: route rebuilt from received Leader poses")
     return parser
 
 
@@ -995,7 +1081,7 @@ def main(profile: FollowerProfile = FOLLOWER_1) -> int:
     try:
         link.open()
         run_follow(link, receiver, plan, args.test_pwm, args.test_duration_ms, args.log, profile,
-                   args.require_mpu_heading)
+                   args.require_mpu_heading, args.path_source)
         return 0
     except (RuntimeError, ValueError, ProtocolError, serial.SerialException, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

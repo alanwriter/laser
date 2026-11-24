@@ -155,6 +155,11 @@
   11/18 兩趟左轉所用 Pi 程式；Nano 原始碼在 Arduino-ugv `leader1-pi-usb`／`follower1-pi-usb`／`follower2-pi-usb`，
   標籤 `flashed-2026-11-18-{leader,f1,f2}`，乾淨重編與車上 HEX 逐位元組相同（a3e804b4／631bb5a7／79f985ef）。
   之後底層只修會擋住任務的問題；工作重心轉到雲台＋雷射與任務層（發現目標、派遣、確認、改派）。
+- 2026-11-24 分支 `breadcrumb-path/v0.1`：Follower 可選 `--path-source breadcrumb`，把收到的 Leader
+  位姿記成軌跡、局部擬合 MPU 航向得切線／曲率，再偏移成自己的車道；控制律不變，預設仍是
+  `analytic`（舊版標籤 `analytic-path-2026-11-24`）。Leader 封包新增 `next_target`（前方 300 mm）。
+  **只有路徑 D 離線模擬與單元測試，尚未部署 Pi、未實車行走。** 見
+  `analysis/2026-11-24-breadcrumb-path/README.md`。
 
 ## 使用者偏好的試跑節奏
 

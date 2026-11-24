@@ -554,6 +554,7 @@ def leader_state_payload(
     yaw_rate_radians_per_second: float = 0.0,
     formation_phase: str = "moving",
     path: WavePathReference | None = None,
+    next_target: dict[str, float] | None = None,
 ) -> dict[str, object]:
     frame: dict[str, object] = {
         "type": "leader_state",
@@ -568,7 +569,21 @@ def leader_state_payload(
     }
     if path is not None:
         frame["path"] = path.to_payload()
+    if next_target is not None:
+        # Planned pose NEXT_TARGET_AHEAD_MM further along the route; breadcrumb
+        # followers use it only to extend the recorded track past the Leader.
+        frame["next_target"] = next_target
     return frame
+
+
+NEXT_TARGET_AHEAD_MM = 300.0
+
+
+def next_target_payload(path_geometry: object, progress_s_mm: float,
+                        ahead_mm: float = NEXT_TARGET_AHEAD_MM) -> dict[str, float]:
+    x, y, heading_deg, _ = path_geometry.pose_at_s(progress_s_mm + ahead_mm, 0.0)
+    return {"x_mm": round(x, 2), "y_mm": round(y, 2),
+            "heading_deg": round(heading_deg, 2), "ahead_mm": ahead_mm}
 
 
 class LeaderPublisher:
@@ -603,10 +618,11 @@ class LeaderPublisher:
         yaw_rate_radians_per_second: float = 0.0,
         formation_phase: str = "moving",
         path: WavePathReference | None = None,
+        next_target: dict[str, float] | None = None,
     ) -> None:
         frame = leader_state_payload(
             status, forward_mm_per_second, yaw_rate_radians_per_second,
-            formation_phase, path,
+            formation_phase, path, next_target,
         )
         encoded = json.dumps(frame, separators=(",", ":")).encode("utf-8")
         if self.sock:
@@ -791,16 +807,15 @@ def run_wave(
                 raise RuntimeError("Wave runtime limit reached; stopping.")
 
             control = wave_control(current, origin, plan)
+            progress_s = (path_geometry.s_at_x(clamp(control.forward_mm, 0.0, plan.length_mm))
+                          if isinstance(path_geometry, WavePath) else
+                          clamp(control.forward_mm, 0.0, path_geometry.end_s_mm))
             publisher.publish(
                 current,
                 (control.left_mm_per_second + control.right_mm_per_second) / 2.0,
                 (control.right_mm_per_second - control.left_mm_per_second) / plan.wheel_track_mm,
-                path=replace(
-                    path_base,
-                    progress_s_mm=(path_geometry.s_at_x(clamp(control.forward_mm, 0.0, plan.length_mm))
-                                   if isinstance(path_geometry, WavePath) else
-                                   clamp(control.forward_mm, 0.0, path_geometry.end_s_mm)),
-                ),
+                path=replace(path_base, progress_s_mm=progress_s),
+                next_target=next_target_payload(path_geometry, progress_s),
             )
             logger.record("control", current, time.monotonic() - started_at, control)
             print(
